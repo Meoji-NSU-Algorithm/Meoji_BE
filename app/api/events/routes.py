@@ -20,6 +20,8 @@ from app.services.event_service import EventService
 from app.services.review_service import get_rating_info, get_reviews_by_event
 
 
+
+
 # 부모 Blueprint가 /api를 붙이므로 여기서는 행사 경로 /event만 지정한다.
 events_bp = Blueprint("events", __name__, url_prefix="/event")
 

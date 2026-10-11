@@ -24,6 +24,17 @@ class ErrorCode(Enum):
     # 상세 ID가 없거나 목록·월간 인기 조회에 반환할 행사가 없을 때 사용한다.
     EVENT_NOT_FOUND = (404, "행사를 찾을 수 없습니다.")
 
+    # --- DIRECTIONS ---
+    # 행사는 존재하지만 목적지 좌표가 없거나,
+    # 요청한 조건으로 이용 가능한 경로를 찾지 못한 경우.
+    ROUTE_NOT_FOUND = (404, "경로를 찾을 수 없습니다.")
+    # 카카오 길찾기 API 인증 오류, 권한 오류, 서버 오류 등
+    DIRECTIONS_API_ERROR = (502, "길찾기 서비스 연동 중 오류가 발생했습니다.")
+    # 카카오 길찾기 API 응답 시간 초과
+    DIRECTIONS_API_TIMEOUT = (504, "길찾기 서비스 응답 시간이 초과되었습니다.")
+    # 길찾기 API 키가 서버 설정에 없는 경우
+    DIRECTIONS_API_KEY_MISSING = (500, "길찾기 서비스 API 키가 설정되지 않았습니다.")
+
     # --- TOUR API ---
     # 연결/HTTP/API 실패는 요청 실패로, 응답 구조/페이지 오류는 응답 오류로 묶는다.
     # 세부 원인은 BusinessException.extra의 reason에 기록한다.
@@ -72,6 +83,15 @@ class ErrorCode(Enum):
     # 토큰은 유효하지만 해당 id의 유저가 DB에 없는 경우 (탈퇴 등).
     USER_NOT_FOUND = (404, "사용자를 찾을 수 없습니다.")
 
+    # --- REVIEW ---
+    # 요청한 리뷰가 DB에 존재하지 않는 경우.
+    # 리뷰 수정, 삭제 등 특정 리뷰를 대상으로 하는 요청에서 사용한다.
+    REVIEW_NOT_FOUND = (404, "리뷰를 찾을 수 없습니다.")
+
+    # 리뷰 작성자가 아닌 사용자가 해당 리뷰를 수정하거나 삭제하려는 경우.
+    # 현재 사용자의 user_id와 리뷰의 user_id를 비교하여 권한을 확인한다.
+    REVIEW_FORBIDDEN = (403, "리뷰를 수정하거나 삭제할 권한이 없습니다.")
+
     # --- INTERNAL_ERROR ---
     # BusinessException/HTTPException 어디에도 속하지 않는, 예상 못한 서버 내부 오류
     # (코드 버그, DB/외부 API 미처리 예외 등)에 사용. app/__init__.py의
@@ -82,20 +102,6 @@ class ErrorCode(Enum):
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
         self.message = message
-
-    # --- REVIEW ---
-    #
-    # 리뷰 API에서 발생할 수 있는 예외 상황을 정의한다.
-    # 리뷰 조회, 수정, 삭제 과정에서 발생하는 오류를
-    # 공통 ErrorCode로 관리하여 일관된 응답을 반환할 수 있도록 한다.
-
-    # 요청한 리뷰가 DB에 존재하지 않는 경우.
-    # 리뷰 수정, 삭제 등 특정 리뷰를 대상으로 하는 요청에서 사용한다.
-    REVIEW_NOT_FOUND = (404, "리뷰를 찾을 수 없습니다.")
-
-    # 리뷰 작성자가 아닌 사용자가 해당 리뷰를 수정하거나 삭제하려는 경우.
-    # 현재 사용자의 user_id와 리뷰의 user_id를 비교하여 권한을 확인한다.
-    REVIEW_FORBIDDEN = (403, "리뷰를 수정하거나 삭제할 권한이 없습니다.")
 
     @property
     def code(self) -> str:
