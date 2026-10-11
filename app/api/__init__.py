@@ -35,6 +35,7 @@ from app.api.auth import auth_bp       # 인증 관련 API (/auth/...)
 from app.api.users import users_bp     # 유저 관련 API (/users/...)
 from app.api.reviews import review_bp  # 리뷰 관련 API (/reviews/...)
 from app.api.events import events_bp   # 행사 조회 API (/event/...)
+from app.api.directions import directions_bp  # 길찾기 API (/directions/...)
 
 # "api"는 Blueprint 이름. url_for()로 URL을 만들 때 "api.auth.kakao_login" 처럼
 # 부모 이름.자식 이름.함수명 형태의 endpoint 이름에 쓰인다.
@@ -46,4 +47,4 @@ api_bp.register_blueprint(auth_bp)
 api_bp.register_blueprint(users_bp)
 api_bp.register_blueprint(review_bp)
 api_bp.register_blueprint(events_bp)
-
+api_bp.register_blueprint(directions_bp)
