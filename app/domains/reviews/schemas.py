@@ -21,7 +21,7 @@ def validate_rating(value):
 class ReviewCreateSchema(Schema):
     """리뷰 작성 요청 본문."""
 
-    event_id = fields.Integer(required=True, validate=validate.Range(min=1))
+    event_id = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
 
     rating = fields.Float(required=True, validate=validate_rating)
 

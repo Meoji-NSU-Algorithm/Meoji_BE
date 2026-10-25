@@ -125,7 +125,6 @@ def test_event_rating_dump():
     assert out["average_rating"] == 0.0 and isinstance(out["average_rating"], float)
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: schemas.py:20 event_id = fields.Integer() without strict=True silently truncates 1.5 to 1")
 def test_create_event_id_float_rejected():
     with pytest.raises(ValidationError):
         ReviewCreateSchema().load(valid(event_id=1.5))
