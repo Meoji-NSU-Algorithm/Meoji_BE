@@ -17,6 +17,8 @@ from app.core.extensions import db
 
 
 def _test_db_url():
+    if not Config.SQLALCHEMY_DATABASE_URI:
+        pytest.exit(".env 에 SQLALCHEMY_DATABASE_URI 가 없어 테스트 DB 를 만들 수 없습니다.", returncode=2)
     base = make_url(Config.SQLALCHEMY_DATABASE_URI)
     return base.set(database=f"{base.database}_test_{os.getpid()}")
 

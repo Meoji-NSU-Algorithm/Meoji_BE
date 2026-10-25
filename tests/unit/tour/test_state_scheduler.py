@@ -179,10 +179,12 @@ def test_incomplete_then_retry_after_wait_succeeds(seeded):
 def test_business_exception_sets_retry_and_loop_continues(seeded, caplog):
     s = make()
     cls, svc = fake_service([BusinessException(ErrorCode.TOUR_API_KEY_MISSING)])
-    with patch.object(sched, "TourSyncService", cls):
+    with caplog.at_level("ERROR"), patch.object(sched, "TourSyncService", cls):
         s._run_loop(seeded)
     assert svc.sync_festivals.call_count == 1
     assert 12 * 3600 - 5 < s._stop.waits[0] <= 12 * 3600
+    # 실패 원인이 로그에 남아야 운영 중 추적할 수 있다.
+    assert "TOUR_API_KEY_MISSING" in caplog.text
 
 
 def test_unexpected_exception_does_not_kill_loop(seeded):

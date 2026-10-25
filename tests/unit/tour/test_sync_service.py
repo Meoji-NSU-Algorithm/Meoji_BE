@@ -154,7 +154,9 @@ def test_unknown_sido_code_29_missing_from_seed(seeded):
 
 def test_migration_seed_sido_codes_documented():
     import importlib.util, pathlib
-    path = next(pathlib.Path("migrations/versions").glob("62d4e8a91b03*.py"))
+    # 실행 위치와 무관하게 이 파일 기준으로 저장소 루트의 migrations 를 찾는다.
+    versions = pathlib.Path(__file__).resolve().parents[3] / "migrations" / "versions"
+    path = next(versions.glob("62d4e8a91b03*.py"))
     spec = importlib.util.spec_from_file_location("mig", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
