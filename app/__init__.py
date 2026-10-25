@@ -16,10 +16,16 @@ from app.extensions import db, migrate, jwt  # DB/마이그레이션/JWT 확장 
 from app import models
 
 
-def create_app():
+def create_app(config_class: type = Config) -> Flask:
+    """Flask 앱을 생성한다.
+
+    Args:
+        config_class: app.config에 적용할 설정 클래스. 테스트에서는 테스트용 DB를 가리키는
+            설정 클래스를 넘겨서 운영/개발 DB와 분리한다. (기본값: Config)
+    """
     app = Flask(__name__)
 
-    app.config.from_object(Config)  # Config 클래스의 설정값들을 app.config에 적용
+    app.config.from_object(config_class)  # 설정 클래스의 값들을 app.config에 적용
 
     db.init_app(app)          # extensions.py에서 만든 db 객체를 이 app에 연결
     migrate.init_app(app, db) # Alembic 마이그레이션이 이 app/db 조합을 쓰도록 연결
