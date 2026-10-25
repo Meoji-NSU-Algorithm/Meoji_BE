@@ -346,3 +346,26 @@ def test_detail_id_mismatch(api):
 def test_detail_without_contentid_accepted(api):
     with patch.object(api, "request", return_value={"items": {"item": {"overview": "x"}}}):
         assert api.festival_common("7") == {"overview": "x"}
+
+
+# ---- 키 노출 방지 ----
+SECRET = "SECRET-KEY-123"
+
+
+@pytest.mark.parametrize("error_type", [
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.HTTPError,
+])
+def test_request_errors_do_not_leak_service_key(error_type):
+    import traceback
+
+    api = TourAPI(SECRET)
+    url_message = f"https://apis.data.go.kr/x/y?serviceKey={SECRET}&pageNo=1"
+    with patch("app.domains.tour.client.requests.get", side_effect=error_type(url_message)):
+        with pytest.raises(BusinessException) as e:
+            api.request("areaBasedList2")
+    exc = e.value
+    assert exc.__cause__ is None and exc.__suppress_context__ is True
+    assert SECRET not in "".join(traceback.format_exception(exc))
+    assert SECRET not in str(exc) and SECRET not in exc.message and SECRET not in str(exc.extra)

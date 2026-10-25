@@ -50,6 +50,7 @@ class TourAPI:
                 (extra.reason: timeout, http_error, connection_error, api_result),
                 응답 구조 이상은 TOUR_API_INVALID_RESPONSE.
         """
+        # requests 예외 메시지에는 serviceKey가 담긴 전체 URL이 있어 `from None`으로 원인 연결을 끊는다.
         try:
             response = requests.get(
                 f"{self.api_base_url}/{endpoint}",
@@ -58,11 +59,11 @@ class TourAPI:
             )
             response.raise_for_status()
         except requests.exceptions.Timeout as error:
-            raise BusinessException(ErrorCode.TOUR_API_REQUEST_FAILED, extra={"reason": "timeout"}) from error
+            raise BusinessException(ErrorCode.TOUR_API_REQUEST_FAILED, extra={"reason": "timeout"}) from None
         except requests.exceptions.HTTPError as error:
-            raise BusinessException(ErrorCode.TOUR_API_REQUEST_FAILED, extra={"reason": "http_error"}) from error
+            raise BusinessException(ErrorCode.TOUR_API_REQUEST_FAILED, extra={"reason": "http_error"}) from None
         except requests.exceptions.RequestException as error:
-            raise BusinessException(ErrorCode.TOUR_API_REQUEST_FAILED, extra={"reason": "connection_error"}) from error
+            raise BusinessException(ErrorCode.TOUR_API_REQUEST_FAILED, extra={"reason": "connection_error"}) from None
 
         # HTTP 200이어도 JSON 구조가 깨져 있을 수 있다.
         try:
