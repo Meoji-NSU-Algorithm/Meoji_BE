@@ -149,10 +149,6 @@ class TourAPI:
                 return
             page += 1
 
-    def festival(self, start_date: str | None = None, end_date: str | None = None) -> list[dict]:
-        # 저장 없이 조회 결과만 확인할 때 사용한다. 전체 결과를 메모리에 모은다.
-        return [row for _, rows in self.iter_festivals(start_date, end_date) for row in rows]
-
     def _one_detail(self, endpoint: str, content_id: str | int, intro: bool = False) -> dict:
         # contentId 한 건의 상세만 요청한다. intro는 contentTypeId=15가 필요하다.
         params = {"contentId": str(content_id), "pageNo": 1, "numOfRows": 10}

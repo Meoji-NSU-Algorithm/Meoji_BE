@@ -407,25 +407,6 @@ class TourSyncService:
                 extra={"reason": "database_value_rejected"},
             ) from error
 
-    def sync_detail(self, content_id):
-        # 이미 저장된 Event의 상세만 새로 받아 한 건을 갱신한다.
-        identifier = self._identity({"contentid": content_id})
-        with Session(self.engine) as session:
-            row = session.scalar(select(Event).where(Event.tour_content_id == identifier))
-            if row is None:
-                raise BusinessException(ErrorCode.TOUR_SYNC_CONTENT_NOT_FOUND)
-        # 기존 필드는 복사하지 않는다. _save()가 잠근 행에서 미전달 값을 유지한다.
-        item = {
-            "contentid": identifier,
-            "contenttypeid": "15",
-        }
-        return self._save(
-            item,
-            self.api.festival_common(identifier),
-            self.api.festival_intro(identifier),
-            require_existing=True,
-        )
-
     def sync_festivals(self, start_date=None, end_date=None, today=None):
         # 전국 목록의 모든 페이지를 돌며 상세까지 수집한다.
         # saved는 성공 건수, failures는 건별 오류, complete는 전체 성공 여부다.

@@ -17,9 +17,6 @@ class Review(TimestampMixin, db.Model):
     # 리뷰가 작성된 행사의 ID를 Event 테이블과 연결한다.
     event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False, index=True)
 
-    # 리뷰와 행사 간의 관계를 설정한다.
-    event = db.relationship("Event")
-
     # 0.5 단위의 평점을 저장한다.
     rating = db.Column(db.Numeric(2, 1), nullable=False)
 
