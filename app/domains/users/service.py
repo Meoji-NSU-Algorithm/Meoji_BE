@@ -1,6 +1,8 @@
 # 유저(User) 조회/생성만 담당하는 서비스.
 # JWT나 카카오 통신은 전혀 모른다. "우리 DB의 user 테이블"만 다룬다.
 # 카카오 로그인 흐름에서는 auth_service가, 내 정보 조회에서는 users 라우트가 이 파일을 호출한다.
+from sqlalchemy.exc import IntegrityError
+
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
 from app.domains.users.models import User
@@ -53,7 +55,16 @@ def get_or_create_kakao_user(info: dict) -> tuple[User, bool]:
 
     # 신규/기존 둘 다 여기서 한 번에 DB에 반영한다.
     # commit() 이후에는 신규 유저도 user.id(PK)가 채워져 있어서 바로 토큰 발급에 쓸 수 있다.
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # 같은 kakao_id로 동시에 가입했거나 이메일 unique가 충돌한 경우
+        db.session.rollback()
+        user = db.session.scalar(db.select(User).filter_by(kakao_id=info["kakao_id"]))
+        if user is None:
+            # kakao_id로 못 찾으면 다른 계정이 같은 이메일을 쓰는 것
+            raise BusinessException(ErrorCode.USER_EMAIL_CONFLICT)
+        return user, False
     return user, is_new_user
 
 

@@ -22,7 +22,7 @@ KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"   # code → 카카오 �
 KAKAO_USER_INFO_URL = "https://kapi.kakao.com/v2/user/me"  # 카카오 토큰 → 사용자 정보 조회
 
 # 카카오가 응답하지 않을 때 워커가 무한정 대기하지 않도록 하는 최대 대기 시간(초).
-# 초과하면 requests.Timeout이 발생하고, 전역 Exception 핸들러가 로그 + 500으로 처리한다.
+# 초과하면 requests.Timeout이 발생하고, 아래 함수들이 KAKAO_API_UNAVAILABLE(502)로 바꾼다.
 TIMEOUT = 5
 
 def get_kakao_access_token(code: str) -> str:
@@ -45,7 +45,11 @@ def get_kakao_access_token(code: str) -> str:
         data["client_secret"] = client_secret
 
     # 카카오 토큰 API는 JSON이 아니라 form-urlencoded를 받는다 → json= 이 아니라 data=
-    resp = requests.post(KAKAO_TOKEN_URL, data=data, timeout=TIMEOUT)
+    try:
+        resp = requests.post(KAKAO_TOKEN_URL, data=data, timeout=TIMEOUT)
+    except requests.RequestException:
+        current_app.logger.warning("Kakao token request error", exc_info=True)
+        raise BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE)
 
     if resp.status_code != 200:
         # 여기서 실패하는 건 대부분 code 문제(만료/재사용/redirect_uri 불일치) → 클라이언트 쪽 원인이라 401.
@@ -56,7 +60,11 @@ def get_kakao_access_token(code: str) -> str:
 
     # 응답 예: {"access_token": "...", "token_type": "bearer", "refresh_token": "...", "expires_in": 21599, ...}
     # 우리는 사용자 정보 조회용 access_token만 필요하다.
-    return resp.json()["access_token"]
+    try:
+        return resp.json()["access_token"]
+    except (ValueError, KeyError, TypeError):
+        current_app.logger.warning("Kakao token response invalid: %s", resp.text)
+        raise BusinessException(ErrorCode.KAKAO_TOKEN_REQUEST_FAILED)
 
 def get_kakao_user_info(kakao_access_token: str) -> dict:
     """카카오 access_token으로 사용자 정보를 조회해서 우리 User 모델 필드명으로 변환한다.
@@ -64,34 +72,42 @@ def get_kakao_user_info(kakao_access_token: str) -> dict:
     반환값: {"kakao_id": int, "email": str, "nickname": str, "profile_image": str | None}
     → user_service.get_or_create_kakao_user()에 그대로 전달된다.
     """
-    resp = requests.get(
-        KAKAO_USER_INFO_URL,
-        headers={"Authorization": f"Bearer {kakao_access_token}"},  # 카카오 토큰을 Bearer 방식으로 전달
-        timeout=TIMEOUT,
-    )
-    # 방금 발급받은 토큰이라 여기서 실패하면 클라이언트 잘못이 아니라 서버/카카오 쪽 문제.
-    # 4xx/5xx면 HTTPError를 던지고, 전역 Exception 핸들러가 로그 + 500 처리한다.
-    resp.raise_for_status()
+    try:
+        resp = requests.get(
+            KAKAO_USER_INFO_URL,
+            headers={"Authorization": f"Bearer {kakao_access_token}"},  # 카카오 토큰을 Bearer 방식으로 전달
+            timeout=TIMEOUT,
+        )
+        # 방금 발급받은 토큰이라 여기서 실패하면 클라이언트 잘못이 아니라 서버/카카오 쪽 문제.
+        resp.raise_for_status()
+        body = resp.json()
+    except (requests.RequestException, ValueError):
+        # 네트워크 오류, 4xx/5xx(HTTPError), JSON이 아닌 응답
+        current_app.logger.warning("Kakao user info request failed", exc_info=True)
+        raise BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE)
 
     # 카카오 응답 구조(필요한 부분만):
     # {
-    #   "id": 1234567890,                       ← 카카오 회원번호 (불변, 우리 User.kakao_id)
+    #   "id": 1234567890,                       <- 카카오 회원번호 (불변, 우리 User.kakao_id)
     #   "kakao_account": {
     #     "email": "a@kakao.com",
     #     "profile": {"nickname": "홍길동", "profile_image_url": "https://..."}
     #   }
     # }
-    body = resp.json()
-    account = body["kakao_account"]
-    profile = account["profile"]
+    # 이메일 등에 동의하지 않으면 키가 없을 수 있어, 없으면 KAKAO_PROFILE_INVALID로 응답한다.
+    try:
+        account = body["kakao_account"]
+        profile = account["profile"]
+        result = {
+            "kakao_id": body["id"],
+            "email": account["email"],
+            "nickname": profile["nickname"],
+        }
+    except (KeyError, TypeError):
+        raise BusinessException(ErrorCode.KAKAO_PROFILE_INVALID)
 
     # 카카오 응답의 필드명을 우리 User 모델의 필드명으로 바꿔서 반환한다.
     # 이렇게 하면 user_service는 카카오 응답 구조를 몰라도 된다.
-    # ※ 대괄호([])로 꺼낸 값은 카카오 콘솔 "동의항목"에서 필수 동의로 설정돼 있어야 한다.
-    #   필수가 아니면 사용자가 동의하지 않았을 때 KeyError → 500이 난다.
-    return {
-        "kakao_id": body["id"],
-        "email": account["email"],                           # 필수 동의 → 항상 존재
-        "nickname": profile["nickname"],                     # 필수 동의 → 항상 존재
-        "profile_image": profile.get("profile_image_url")    # 선택 동의 → 없을 수 있음 (.get → 없으면 None)
-    }
+    # 프로필 사진은 선택 동의라 없을 수 있다. (.get -> 없으면 None)
+    result["profile_image"] = profile.get("profile_image_url")
+    return result

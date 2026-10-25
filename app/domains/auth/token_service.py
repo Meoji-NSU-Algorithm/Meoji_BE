@@ -18,6 +18,7 @@
 #   그래서 폐기할 토큰의 jti를 TokenBlocklist 테이블에 저장하고, 요청이 올 때마다
 #   app/core/jwt_callbacks.py의 check_if_token_revoked가 "이 jti가 블록리스트에 있나?"를 확인해서 거부한다.
 from flask_jwt_extended import create_access_token, create_refresh_token, decode_token
+from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
@@ -54,11 +55,15 @@ def rotate_refresh_token(refresh_payload: dict) -> dict[str, str]:
 
     refresh_payload: 이미 @jwt_required(refresh=True)로 검증된 refresh 토큰의 내용물
     """
-    # @jwt_required(refresh=True)가 이미 "블록리스트에 없는 토큰"임을 확인했으므로
-    # 중복 저장 걱정 없이 바로 추가한다.
+    # @jwt_required(refresh=True)가 블록리스트 여부를 확인했지만, 같은 토큰으로 동시에 요청이 오면
+    # 둘 다 확인을 통과할 수 있다. jti unique 제약 위반(IntegrityError)은 이미 사용된 토큰으로 처리한다.
     db.session.add(TokenBlocklist(jti=refresh_payload["jti"]))
-    # 새 토큰을 주기 전에 먼저 폐기를 DB에 확정한다.
-    db.session.commit()
+    try:
+        # 새 토큰을 주기 전에 먼저 폐기를 DB에 확정한다.
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        raise BusinessException(ErrorCode.AUTH_TOKEN_REVOKED)
     # sub는 문자열 유저 id → issue_tokens가 받는 int로 변환
     return issue_tokens(int(refresh_payload["sub"]))
 
@@ -99,4 +104,8 @@ def revoke_tokens(access_payload: dict, refresh_token: str) -> None:
         db.session.add(TokenBlocklist(jti=refresh_jti))
 
     # access와 refresh 폐기를 한 번에 커밋한다. (하나만 저장되고 하나는 빠지는 일이 없도록 한 트랜잭션으로)
-    db.session.commit()
+    # 동시 요청으로 jti가 이미 저장됐다면(IntegrityError) 이미 폐기된 것이므로 성공으로 본다.
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
