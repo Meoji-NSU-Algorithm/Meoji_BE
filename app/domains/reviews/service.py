@@ -43,12 +43,6 @@ def create_review(data: dict) -> Review:
     return review
 
 
-def ensure_event_exists(event_id: int) -> None:
-    """행사가 없으면 EVENT_NOT_FOUND를 발생시킨다."""
-    if db.session.get(Event, event_id) is None:
-        raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
-
-
 def get_reviews_by_event(event_id: int) -> list[Review]:
     """행사의 리뷰를 최근 수정순으로 반환한다. 행사 존재 여부는 확인하지 않는다."""
     reviews = db.session.scalars(

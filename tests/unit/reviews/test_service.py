@@ -64,16 +64,9 @@ def test_reviews_by_event_empty(event):
     assert service.get_reviews_by_event(event.id) == []
 
 
-def test_reviews_by_event_nonexistent_returns_empty_without_check(app_ctx):
-    # get_reviews_by_event 자체는 행사 존재를 확인하지 않는다.
+def test_reviews_by_event_nonexistent_returns_empty(app_ctx):
+    # 행사가 없어도 오류 없이 빈 목록을 반환한다.
     assert service.get_reviews_by_event(9999) == []
-
-
-def test_ensure_event_exists(event):
-    service.ensure_event_exists(event.id)
-    with pytest.raises(BusinessException) as e:
-        service.ensure_event_exists(9999)
-    assert code_of(e) == ErrorCode.EVENT_NOT_FOUND
 
 
 def test_reviews_by_event_ordering(make_user, event, make_event, make_review):

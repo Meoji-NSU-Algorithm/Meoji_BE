@@ -149,11 +149,14 @@ def test_review_journey(client, refs, make_event, login):
     assert rating == {"event_id": eid, "average_rating": 3.8, "review_count": 2}
 
 
-def test_review_endpoints_unknown_event_404(client, refs, login):
-    """없는 행사의 리뷰 목록/평점은 404 EVENT_NOT_FOUND."""
+def test_review_endpoints_unknown_event_returns_empty(client, refs, login):
+    """없는 행사의 리뷰 목록/평점은 404가 아니라 200 빈 목록/0점이다."""
     h, _, _ = login()
-    err(client.get("/api/reviews/event/9999", headers=h), 404, "EVENT_NOT_FOUND")
-    err(client.get("/api/reviews/event/9999/rating", headers=h), 404, "EVENT_NOT_FOUND")
+    listed = client.get("/api/reviews/event/9999", headers=h)
+    assert listed.status_code == 200 and listed.get_json()["data"] == []
+    rating = client.get("/api/reviews/event/9999/rating", headers=h)
+    assert rating.status_code == 200
+    assert rating.get_json()["data"] == {"event_id": 9999, "average_rating": 0.0, "review_count": 0}
 
 
 def test_event_review_endpoints_require_jwt(client, refs, make_event):

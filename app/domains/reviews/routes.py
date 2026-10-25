@@ -51,13 +51,8 @@ def create_review():
 def list_event_reviews(event_id):
     """행사의 리뷰 목록을 최근 수정순으로 반환한다.
 
-    GET /api/reviews/event/<event_id>. JWT 필요. 리뷰가 없으면 200과 빈 목록.
-
-    Raises:
-        EVENT_NOT_FOUND: 행사가 없음(404).
+    GET /api/reviews/event/<event_id>. JWT 필요. 리뷰가 없거나 행사가 없어도 200과 빈 목록.
     """
-    review_service.ensure_event_exists(event_id)
-
     result = review_service.get_reviews_by_event(event_id)
 
     return jsonify(
@@ -72,13 +67,8 @@ def list_event_reviews(event_id):
 def get_event_rating(event_id):
     """행사의 평균 평점과 리뷰 개수를 반환한다.
 
-    GET /api/reviews/event/<event_id>/rating. JWT 필요.
-
-    Raises:
-        EVENT_NOT_FOUND: 행사가 없음(404).
+    GET /api/reviews/event/<event_id>/rating. JWT 필요. 리뷰가 없거나 행사가 없으면 평점 0, 개수 0.
     """
-    review_service.ensure_event_exists(event_id)
-
     rating_info = review_service.get_rating_info(event_id)
 
     return jsonify(
