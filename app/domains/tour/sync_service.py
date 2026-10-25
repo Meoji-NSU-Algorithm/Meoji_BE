@@ -3,7 +3,7 @@
 # 행사와 태그 연결을 저장한다. 실패 건은 롤백하되 다음 행사는 계속 처리한다.
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from html import unescape
 from urllib.parse import urlsplit
@@ -14,11 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
+from app.core.time import KST
 from app.domains.events.models import Category, Event, Sido, Tag
 from app.domains.tour.client import TourAPI
-
-# TourAPI 조회 시작일은 한국 날짜를 기준으로 계산한다.
-KST = timezone(timedelta(hours=9))
 
 # API 필드가 응답에 없으면 기존 값은 유지하고, 빈 문자열이면 NULL로 갱신한다.
 # 오른쪽 컬럼의 최대 길이는 모델 메타데이터에서 검사한다.

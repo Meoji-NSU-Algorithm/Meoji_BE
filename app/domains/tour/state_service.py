@@ -15,7 +15,7 @@ from app.core.extensions import db
 from app.domains.tour.models import TourSyncState
 
 
-def last_success_at():
+def last_success_at() -> datetime | None:
     """마지막 전체 성공 시각(UTC)을 반환한다. 기록이 없으면 None이다.
 
     호출 전에 Flask 앱 컨텍스트가 있어야 한다. 반환값은 시간대 정보가 없는
@@ -33,7 +33,7 @@ def last_success_at():
         return state.last_success_at if state else None
 
 
-def record_success():
+def record_success() -> datetime:
     """전체 수집 성공 뒤에만 호출해 완료 시각을 UTC로 기록한다.
 
     이 함수의 DB 트랜잭션은 행사별 저장 트랜잭션과 별개다. 시각 저장에

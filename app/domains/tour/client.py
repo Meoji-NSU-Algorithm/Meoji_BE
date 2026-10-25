@@ -3,23 +3,27 @@
 # tour_sync.py에 있으므로 API 조회만 하고 싶을 때도 이 클래스를 쓸 수 있다.
 
 import re
-from datetime import datetime, timedelta, timezone
+from collections.abc import Iterator
+from datetime import datetime, timedelta
 
 import requests
-
-from app.core.config import Config
+from flask import current_app
 from app.core.errors import BusinessException, ErrorCode
+from app.core.time import KST
 
 
 class TourAPI:
     # searchFestival2 / detailCommon2 / detailIntro2만 사용하는 축제 전용 클라이언트.
 
-    def __init__(self):
+    def __init__(self, service_key: str | None = None):
+        # 키를 직접 넘기지 않으면 앱 설정에서 읽는다(앱 컨텍스트 필요).
+        if service_key is None:
+            service_key = current_app.config.get("TOURAPI_KEY")
         # 키가 없으면 외부 요청 전에 실패시켜 설정 누락을 바로 알 수 있게 한다.
-        if not Config.TOURAPI_KEY:
+        if not service_key:
             raise BusinessException(ErrorCode.TOUR_API_KEY_MISSING)
         # 이미 URL 인코딩된 키를 requests가 다시 인코딩하지 않도록 한 번 푼다.
-        self.api_key = requests.utils.unquote(Config.TOURAPI_KEY)
+        self.api_key = requests.utils.unquote(service_key)
         self.api_base_url = "https://apis.data.go.kr/B551011/KorService2"  # API 공통 주소
         # 모든 엔드포인트가 요구하는 인증 키·클라이언트 정보·JSON 응답 형식.
         self.default_params = {
@@ -29,7 +33,7 @@ class TourAPI:
             "_type": "json",
         }
 
-    def request(self, endpoint, params=None):
+    def request(self, endpoint: str, params: dict | None = None) -> dict:
         # 호출별 파라미터를 기본 파라미터와 합쳐 한 번 요청한다.
         # 연결/타임아웃/HTTP 실패를 공통 ErrorCode와 extra.reason으로 전달한다.
         try:
@@ -65,7 +69,7 @@ class TourAPI:
         return body
 
     @staticmethod
-    def get_items(body):
+    def get_items(body: dict) -> list[dict]:
         # TourAPI는 0건이면 items를 빈 문자열로, 1건이면 item 객체 하나로 줄 수 있다.
         # 호출자가 항상 list[dict]로 처리할 수 있게 반환 형식을 통일한다.
         items = body.get("items", "")
@@ -81,11 +85,11 @@ class TourAPI:
         return rows
 
     @staticmethod
-    def validate_festival_dates(start_date=None, end_date=None):
+    def validate_festival_dates(start_date: str | None = None, end_date: str | None = None) -> tuple[str, str | None]:
         # 기간을 생략하면 한국 시간 기준 7일 전부터 조회한다. 최근에 등록·수정된
         # 행사를 놓칠 가능성을 줄이고, 종료일은 생략해 먼 미래의 행사도 포함한다.
         if start_date is None and end_date is None:
-            today = datetime.now(timezone(timedelta(hours=9))).date()
+            today = datetime.now(KST).date()
             return (today - timedelta(days=7)).strftime("%Y%m%d"), None
         if start_date is None:
             raise BusinessException(ErrorCode.TOUR_FESTIVAL_INVALID_PERIOD, extra={"reason": "start_date_required"})
@@ -103,7 +107,7 @@ class TourAPI:
             raise BusinessException(ErrorCode.TOUR_FESTIVAL_INVALID_PERIOD, extra={"reason": "start_after_end"})
         return start_date, end_date
 
-    def iter_festivals(self, start_date=None, end_date=None):
+    def iter_festivals(self, start_date: str | None = None, end_date: str | None = None) -> Iterator[tuple[int, list[dict]]]:
         # lDongRegnCd를 보내지 않아 전국을 조회한다. 제너레이터라 페이지를
         # 받는 즉시 저장 서비스가 처리할 수 있고 목록 전체를 메모리에 쌓지 않는다.
         start_date, end_date = self.validate_festival_dates(start_date, end_date)
@@ -145,11 +149,11 @@ class TourAPI:
                 return
             page += 1
 
-    def festival(self, start_date=None, end_date=None):
+    def festival(self, start_date: str | None = None, end_date: str | None = None) -> list[dict]:
         # 저장 없이 조회 결과만 확인할 때 사용한다. 전체 결과를 메모리에 모은다.
         return [row for _, rows in self.iter_festivals(start_date, end_date) for row in rows]
 
-    def _one_detail(self, endpoint, content_id, intro=False):
+    def _one_detail(self, endpoint: str, content_id: str | int, intro: bool = False) -> dict:
         # contentId 한 건의 상세만 요청한다. intro는 contentTypeId=15가 필요하다.
         params = {"contentId": str(content_id), "pageNo": 1, "numOfRows": 10}
         if intro:
@@ -163,10 +167,10 @@ class TourAPI:
             raise BusinessException(ErrorCode.TOUR_SYNC_ID_MISMATCH)
         return row
 
-    def festival_common(self, content_id):
+    def festival_common(self, content_id: str | int) -> dict:
         # detailCommon2: overview, 홈페이지, 주소, 이미지 등 공통 상세.
         return self._one_detail("detailCommon2", content_id)
 
-    def festival_intro(self, content_id):
+    def festival_intro(self, content_id: str | int) -> dict:
         # detailIntro2: 행사 장소, 시간, 요금, 주최 등 축제 상세.
         return self._one_detail("detailIntro2", content_id, intro=True)
