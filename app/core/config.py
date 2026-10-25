@@ -38,3 +38,51 @@ class Config:
     # 풀에서 꺼낸 연결이 살아 있는지 쿼리 전에 확인해, MySQL 재시작 후 남은 끊어진 연결을 교체한다.
     # 실행 중 실패한 요청을 자동 재시도하지는 않는다.
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
+
+
+# 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.
+REQUIRED_CONFIG_KEYS = (
+    "JWT_SECRET_KEY",
+    "KAKAO_CLIENT_ID",
+    "KAKAO_REDIRECT_URI",
+    "SQLALCHEMY_DATABASE_URI",
+)
+
+# JWT 서명 키가 이보다 짧으면 무차별 대입에 약해지므로 경고한다.
+JWT_SECRET_MIN_LENGTH = 32
+
+
+def _is_placeholder(value: str) -> bool:
+    """.env.example에서 복사한 채 남겨 둔 자리표시 값인지 판단한다."""
+    upper = value.strip().upper()
+    return upper == "NEED_TO_SET" or upper.startswith("YOUR_") or upper == "CHANGE"
+
+
+def validate_required_config(app) -> None:
+    """필수 설정이 비었거나 자리표시 값이면 기동을 중단한다.
+
+    누락을 기동 시점에 잡지 않으면 첫 로그인 요청에서야 500으로 드러난다.
+    메시지에는 키 이름과 사유만 담고 설정 값은 절대 담지 않는다.
+
+    Raises:
+        RuntimeError: 문제 있는 키를 한 번에 모두 나열한 메시지.
+    """
+    problems = []
+    for key in REQUIRED_CONFIG_KEYS:
+        value = app.config.get(key)
+        if value is None or not str(value).strip():
+            problems.append(f"{key}(누락)")
+        elif _is_placeholder(str(value)):
+            problems.append(f"{key}(자리표시 값)")
+    if problems:
+        raise RuntimeError(
+            "필수 설정이 올바르지 않아 앱을 시작할 수 없습니다: "
+            + ", ".join(problems)
+            + ". .env.example을 참고해 .env를 채워주세요."
+        )
+
+    jwt_secret = str(app.config["JWT_SECRET_KEY"])
+    if len(jwt_secret) < JWT_SECRET_MIN_LENGTH:
+        app.logger.warning(
+            "JWT_SECRET_KEY가 %d자 미만으로 짧습니다. 더 긴 무작위 값을 사용하세요.", JWT_SECRET_MIN_LENGTH
+        )

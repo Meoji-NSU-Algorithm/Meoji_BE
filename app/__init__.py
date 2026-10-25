@@ -1,6 +1,6 @@
 """Flask 앱 팩토리. 확장 초기화, 오류 핸들러와 API Blueprint 등록을 담당한다."""
 from flask import Flask
-from app.core.config import Config
+from app.core.config import Config, validate_required_config
 
 from app.core.errors.handlers import register_error_handlers
 
@@ -21,6 +21,9 @@ def create_app(config_class: type = Config) -> Flask:
     app = Flask(__name__)
 
     app.config.from_object(config_class)
+
+    # DB 연결 등 확장 초기화 전에 설정 누락을 잡아, 잘못된 설정으로는 부분 초기화된 앱이 생기지 않게 한다.
+    validate_required_config(app)
 
     db.init_app(app)
     migrate.init_app(app, db)
