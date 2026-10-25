@@ -52,16 +52,6 @@ def test_create_invalid_content(c):
     assert "content" in e.value.messages
 
 
-def test_create_whitespace_only_content_is_accepted():
-    # 현재 동작: 공백만 있는 내용도 통과한다 (Length(min=1)만 검사).
-    assert ReviewCreateSchema().load(valid(content="   "))["content"] == "   "
-
-
-def test_create_content_max_length_not_limited_by_schema():
-    # 스키마에 상한이 없다. 모델은 Text(65535 bytes)이므로 아주 긴 값은 DB 단계에서 문제가 된다.
-    ReviewCreateSchema().load(valid(content="a" * 100000))
-
-
 @pytest.mark.parametrize("eid", [0, -1, "x", None])
 def test_create_invalid_event_id(eid):
     with pytest.raises(ValidationError) as e:
@@ -115,7 +105,7 @@ def test_response_dump_shape_and_types():
     out = ReviewResponseSchema().dump(Obj())
     assert set(out) == {"id", "user_id", "event_id", "rating", "content", "created_at", "updated_at"}
     assert out["rating"] == 4.5 and isinstance(out["rating"], float)
-    assert out["created_at"] == "2026-01-01T12:00:00"
+    assert out["created_at"] == "2026-01-01T12:00:00+00:00"
 
 
 def test_event_rating_dump():
@@ -128,3 +118,36 @@ def test_event_rating_dump():
 def test_create_event_id_float_rejected():
     with pytest.raises(ValidationError):
         ReviewCreateSchema().load(valid(event_id=1.5))
+
+
+# ---------- content 공백 제거와 길이 검증 ----------
+
+def test_content_is_stripped():
+    assert ReviewCreateSchema().load(valid(content="  hi  "))["content"] == "hi"
+    assert ReviewUpdateSchema().load({"content": "\n hi \t"})["content"] == "hi"
+
+
+@pytest.mark.parametrize("c", ["   ", "", "\n\t ", "x" * 1001, "가" * 1001, None, 123])
+def test_create_invalid_content(c):
+    with pytest.raises(ValidationError) as e:
+        ReviewCreateSchema().load(valid(content=c))
+    assert "content" in e.value.messages
+
+
+@pytest.mark.parametrize("c", ["   ", "", "x" * 1001, None, 123])
+def test_update_invalid_content(c):
+    with pytest.raises(ValidationError) as e:
+        ReviewUpdateSchema().load({"content": c})
+    assert "content" in e.value.messages
+
+
+@pytest.mark.parametrize("c", ["x" * 1000, "가" * 1000, "  " + "x" * 1000 + "  "])
+def test_content_max_length_counts_characters(c):
+    assert len(ReviewCreateSchema().load(valid(content=c))["content"]) == 1000
+    assert len(ReviewUpdateSchema().load({"content": c})["content"]) == 1000
+
+
+def test_whitespace_content_message_is_korean():
+    with pytest.raises(ValidationError) as e:
+        ReviewCreateSchema().load(valid(content="  "))
+    assert e.value.messages["content"] == ["리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."]

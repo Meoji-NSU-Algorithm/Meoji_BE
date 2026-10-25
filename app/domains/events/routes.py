@@ -65,13 +65,13 @@ def list_events():
 
     GET /api/events. 쿼리: q, title, venue, tag, category_id, sido_code, is_free,
     start_date, end_date, sort, page, size. 결과가 없어도 200과 빈 목록을 반환한다.
-    검색 파라미터(SEARCH_PARAMS)가 하나라도 있으면 JWT가 필요하고, page/size/sort만 있으면 JWT 없이 호출할 수 있다.
+    검색 파라미터(SEARCH_PARAMS)에 공백이 아닌 값이 하나라도 있으면 JWT가 필요하고, page/size/sort만 있으면 JWT 없이 호출할 수 있다.
 
     Raises:
         AUTH_UNAUTHORIZED 등: 검색인데 JWT가 없거나 올바르지 않음(401).
         COMMON_INVALID_INPUT: 쿼리 검증 실패(400).
     """
-    if any(request.args.get(name) for name in SEARCH_PARAMS):
+    if any((request.args.get(name) or "").strip() for name in SEARCH_PARAMS):
         verify_jwt_in_request()
     query = EventListQuerySchema().load(request.args)
     result = event_service.list_events(query)

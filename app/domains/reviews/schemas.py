@@ -3,10 +3,28 @@
 from marshmallow import (
     Schema,
     fields,
+    pre_load,
     validate,
     validates_schema,
     ValidationError,
 )
+
+from app.core.fields import UtcDateTime
+
+CONTENT_MAX_LENGTH = 1000
+CONTENT_LENGTH_MESSAGE = "리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."
+
+
+def _content_validator():
+    """content 필드용 길이 검증기를 만든다. 글자 수 기준이며 바이트 수가 아니다."""
+    return validate.Length(min=1, max=CONTENT_MAX_LENGTH, error=CONTENT_LENGTH_MESSAGE)
+
+
+def _strip_content(data):
+    """content가 문자열이면 앞뒤 공백을 제거한 사본을 돌려준다. 문자열이 아니면 String 필드가 거부하도록 그대로 둔다."""
+    if isinstance(data, dict) and isinstance(data.get("content"), str):
+        data = {**data, "content": data["content"].strip()}
+    return data
 
 
 def validate_rating(value):
@@ -25,7 +43,12 @@ class ReviewCreateSchema(Schema):
 
     rating = fields.Float(required=True, validate=validate_rating)
 
-    content = fields.String(required=True, validate=validate.Length(min=1))
+    content = fields.String(required=True, validate=_content_validator())
+
+    @pre_load
+    def strip_content(self, data, **kwargs):
+        # 공백만 있는 리뷰를 길이 검증으로 걸러내기 위해 검증 전에 제거한다.
+        return _strip_content(data)
 
 
 class ReviewUpdateSchema(Schema):
@@ -33,7 +56,12 @@ class ReviewUpdateSchema(Schema):
 
     rating = fields.Float(required=False, validate=validate_rating)
 
-    content = fields.String(required=False, validate=validate.Length(min=1))
+    content = fields.String(required=False, validate=_content_validator())
+
+    @pre_load
+    def strip_content(self, data, **kwargs):
+        # 공백만 있는 리뷰를 길이 검증으로 걸러내기 위해 검증 전에 제거한다.
+        return _strip_content(data)
 
     @validates_schema
     def validate_update(self, data, **kwargs):
@@ -49,8 +77,8 @@ class ReviewResponseSchema(Schema):
     event_id = fields.Integer()
     rating = fields.Float()
     content = fields.String()
-    created_at = fields.DateTime()
-    updated_at = fields.DateTime()
+    created_at = UtcDateTime()
+    updated_at = UtcDateTime()
 
 
 class EventRatingResponseSchema(Schema):
