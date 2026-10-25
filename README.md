@@ -73,7 +73,7 @@ pytest
 - 행사 API 경로가 `/api/event/...`에서 `/api/events/...`로 바뀌었습니다.
 - 행사 응답 JSON 키가 camelCase에서 snake_case로 바뀌었습니다. (예: `startDate` -> `start_date`, `totalCount` -> `total_count`)
 - 행사 목록과 월간 TOP은 결과가 없어도 404 대신 `200`과 빈 목록을 반환합니다.
-- `GET /api/reviews/event/<event_id>`와 `GET /api/reviews/event/<event_id>/rating`은 로그인 없이 조회할 수 있고, 존재하지 않는 행사는 404를 반환합니다.
+- `GET /api/reviews/event/<event_id>`와 `GET /api/reviews/event/<event_id>/rating`은 기존처럼 로그인이 필요하며, 존재하지 않는 행사는 200 빈 응답 대신 404를 반환합니다.
 - 404/405 같은 HTTP 에러의 `code`가 `COMMON_NOT_FOUND`, `COMMON_METHOD_NOT_ALLOWED` 형식으로 통일되었습니다.
 
 ## 2. Git 브랜치 전략

@@ -141,18 +141,26 @@ def test_review_journey(client, refs, make_event, login):
     assert detail["review_count"] == 2 and detail["average_rating"] == 3.8
     assert {r["id"] for r in detail["reviews"]} == {r1["id"], r2["id"]}
 
-    # 공개 목록/평점: 인증 헤더 없음
-    listed = client.get(f"/api/reviews/event/{eid}")
+    # 행사별 목록/평점: JWT 필요
+    listed = client.get(f"/api/reviews/event/{eid}", headers=h1)
     assert listed.status_code == 200
     assert [r["id"] for r in listed.get_json()["data"]] == [r2["id"], r1["id"]]
-    rating = client.get(f"/api/reviews/event/{eid}/rating").get_json()["data"]
+    rating = client.get(f"/api/reviews/event/{eid}/rating", headers=h1).get_json()["data"]
     assert rating == {"event_id": eid, "average_rating": 3.8, "review_count": 2}
 
 
-def test_review_endpoints_unknown_event_404(client, refs):
+def test_review_endpoints_unknown_event_404(client, refs, login):
     """없는 행사의 리뷰 목록/평점은 404 EVENT_NOT_FOUND."""
-    err(client.get("/api/reviews/event/9999"), 404, "EVENT_NOT_FOUND")
-    err(client.get("/api/reviews/event/9999/rating"), 404, "EVENT_NOT_FOUND")
+    h, _, _ = login()
+    err(client.get("/api/reviews/event/9999", headers=h), 404, "EVENT_NOT_FOUND")
+    err(client.get("/api/reviews/event/9999/rating", headers=h), 404, "EVENT_NOT_FOUND")
+
+
+def test_event_review_endpoints_require_jwt(client, refs, make_event):
+    """행사별 리뷰 목록/평점은 JWT가 없으면 401이다."""
+    eid = make_event().id
+    err(client.get(f"/api/reviews/event/{eid}"), 401, "AUTH_UNAUTHORIZED")
+    err(client.get(f"/api/reviews/event/{eid}/rating"), 401, "AUTH_UNAUTHORIZED")
 
 
 def test_create_review_unknown_event_404(client, refs, login):
@@ -206,12 +214,12 @@ def test_owner_partial_update_and_delete(client, refs, make_event, login):
     assert r["rating"] == 2.5 and r["content"] == "원본"
     r = client.put(f"/api/reviews/{rid}", headers=h, json={"content": "수정"}).get_json()["data"]
     assert r["rating"] == 2.5 and r["content"] == "수정"
-    assert client.get(f"/api/reviews/event/{eid}/rating").get_json()["data"]["average_rating"] == 2.5
+    assert client.get(f"/api/reviews/event/{eid}/rating", headers=h).get_json()["data"]["average_rating"] == 2.5
 
     deleted = client.delete(f"/api/reviews/{rid}", headers=h)
     assert deleted.status_code == 200 and deleted.get_json()["data"]["id"] == rid
-    assert client.get(f"/api/reviews/event/{eid}").get_json()["data"] == []
-    assert client.get(f"/api/reviews/event/{eid}/rating").get_json()["data"]["review_count"] == 0
+    assert client.get(f"/api/reviews/event/{eid}", headers=h).get_json()["data"] == []
+    assert client.get(f"/api/reviews/event/{eid}/rating", headers=h).get_json()["data"]["review_count"] == 0
     err(client.delete(f"/api/reviews/{rid}", headers=h), 404, "REVIEW_NOT_FOUND")
 
 

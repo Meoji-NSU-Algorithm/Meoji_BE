@@ -1,6 +1,6 @@
 """리뷰 API 라우트(`/api/reviews`).
 
-행사별 목록·평점 조회는 공개이고, 작성·수정·삭제·내 리뷰 조회는 JWT가 필요하다.
+모든 엔드포인트는 JWT가 필요하다. 행사 상세(`/api/events/<id>`)에는 해당 행사의 리뷰가 함께 내려간다.
 """
 
 from flask import Blueprint, request, jsonify
@@ -47,10 +47,11 @@ def create_review():
 
 
 @review_bp.get("/event/<int:event_id>")
+@jwt_required()
 def list_event_reviews(event_id):
     """행사의 리뷰 목록을 최근 수정순으로 반환한다.
 
-    GET /api/reviews/event/<event_id>. 인증 불필요. 리뷰가 없으면 200과 빈 목록.
+    GET /api/reviews/event/<event_id>. JWT 필요. 리뷰가 없으면 200과 빈 목록.
 
     Raises:
         EVENT_NOT_FOUND: 행사가 없음(404).
@@ -67,10 +68,11 @@ def list_event_reviews(event_id):
 
 
 @review_bp.get("/event/<int:event_id>/rating")
+@jwt_required()
 def get_event_rating(event_id):
     """행사의 평균 평점과 리뷰 개수를 반환한다.
 
-    GET /api/reviews/event/<event_id>/rating. 인증 불필요.
+    GET /api/reviews/event/<event_id>/rating. JWT 필요.
 
     Raises:
         EVENT_NOT_FOUND: 행사가 없음(404).
