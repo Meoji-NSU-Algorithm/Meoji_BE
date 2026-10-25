@@ -129,3 +129,16 @@ class ReviewResponseSchema(Schema):
 
     # 리뷰 수정 시간을 반환한다.
     updated_at = fields.DateTime()
+
+
+# 행사의 평균 평점과 리뷰 개수 응답 형식을 정의한다.
+class EventRatingResponseSchema(Schema):
+
+    # 평점을 집계한 행사 ID를 반환한다.
+    event_id = fields.Integer()
+
+    # 평균 평점을 반환한다. 리뷰가 없으면 0이다.
+    average_rating = fields.Float()
+
+    # 리뷰 개수를 반환한다.
+    review_count = fields.Integer()

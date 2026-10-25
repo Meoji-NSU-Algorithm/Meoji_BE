@@ -83,13 +83,19 @@ def create_review(data: dict) -> Review:
     return review
 
 
+# 행사가 존재하는지 확인하고, 없으면 EVENT_NOT_FOUND 예외를 발생시킨다.
+def ensure_event_exists(event_id: int) -> None:
+    if db.session.get(Event, event_id) is None:
+        raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+
 # 특정 행사의 리뷰 목록을 조회한다.
 def get_reviews_by_event(event_id: int) -> list[Review]:
     # 행사 ID를 기준으로 리뷰를 조회하고 최근 수정순으로 정렬한다.
     reviews = db.session.scalars(
         select(Review)
         .where(Review.event_id == event_id)
-        .order_by(Review.updated_at.desc(), Review.created_at.desc())
+        .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
     ).all()
 
     return reviews
@@ -98,7 +104,12 @@ def get_reviews_by_event(event_id: int) -> list[Review]:
 # 현재 사용자가 작성한 리뷰 목록을 조회한다.
 def get_my_reviews(user_id: int) -> list[Review]:
     # 사용자 ID를 기준으로 작성한 리뷰를 조회한다.
-    reviews = db.session.scalars(select(Review).where(Review.user_id == user_id)).all()
+    # 최근 수정순으로 정렬하고, 시각이 같으면 ID 내림차순으로 순서를 고정한다.
+    reviews = db.session.scalars(
+        select(Review)
+        .where(Review.user_id == user_id)
+        .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
+    ).all()
 
     return reviews
 

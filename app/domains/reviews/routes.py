@@ -6,6 +6,7 @@ from app.domains.reviews.schemas import (
     ReviewCreateSchema,
     ReviewUpdateSchema,
     ReviewResponseSchema,
+    EventRatingResponseSchema,
 )
 from app.domains.reviews import service as review_service
 
@@ -92,8 +93,8 @@ review_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
 #   → API의 성공 응답을 공통 형식으로 만든다.
 #
 # [API 호출 공통 사항]
-# - 모든 리뷰 API는 JWT 인증이 필요하다.
-# - Authorization 헤더에 Access Token을 포함해야 한다.
+# - 행사별 리뷰 목록·평점 조회 API는 JWT 없이 호출할 수 있다.
+# - 그 외 리뷰 API는 JWT 인증이 필요하며 Authorization 헤더에 Access Token을 포함해야 한다.
 #
 # Authorization: Bearer <access_token>
 
@@ -101,7 +102,7 @@ review_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
 # 리뷰 생성 요청을 처리하고 생성된 리뷰를 반환한다.
 @review_bp.post("")
 @jwt_required()
-def create():
+def create_review():
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
     user_id = int(get_jwt_identity())
 
@@ -124,8 +125,10 @@ def create():
 
 # 특정 행사의 리뷰 목록 조회 요청을 처리한다.
 @review_bp.get("/event/<int:event_id>")
-@jwt_required()
-def get_by_event(event_id):
+def list_event_reviews(event_id):
+    # 없는 행사의 리뷰 조회는 빈 목록이 아니라 404 EVENT_NOT_FOUND로 응답한다.
+    review_service.ensure_event_exists(event_id)
+
     # 행사 ID를 기준으로 리뷰 목록을 조회한다.
     result = review_service.get_reviews_by_event(event_id)
 
@@ -139,25 +142,29 @@ def get_by_event(event_id):
 
 # 특정 행사의 평균 평점과 리뷰 개수 조회 요청을 처리한다.
 @review_bp.get("/event/<int:event_id>/rating")
-@jwt_required()
-def get_average_rating_by_event(event_id):
+def get_event_rating(event_id):
+    # 없는 행사는 404 EVENT_NOT_FOUND로 응답한다.
+    review_service.ensure_event_exists(event_id)
+
     # 행사 ID를 기준으로 평균 평점과 리뷰 개수를 조회한다.
     rating_info = review_service.get_rating_info(event_id)
 
     # 평점 정보를 공통 응답 형식으로 반환한다.
     return jsonify(
-        CommonResponse.success({
-            "event_id": event_id,
-            "average_rating": rating_info["average_rating"],
-            "review_count": rating_info["review_count"],
-        })
+        CommonResponse.success(
+            EventRatingResponseSchema().dump({
+                "event_id": event_id,
+                "average_rating": rating_info["average_rating"],
+                "review_count": rating_info["review_count"],
+            })
+        )
     ), 200
 
 
 # 현재 로그인한 사용자의 리뷰 목록 조회 요청을 처리한다.
 @review_bp.get("/my")
 @jwt_required()
-def get_my():
+def list_my_reviews():
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
     user_id = int(get_jwt_identity())
 
@@ -175,7 +182,7 @@ def get_my():
 # 리뷰 수정 요청을 처리하고 수정된 리뷰를 반환한다.
 @review_bp.put("/<int:review_id>")
 @jwt_required()
-def update(review_id):
+def update_review(review_id):
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
     user_id = int(get_jwt_identity())
 
@@ -196,7 +203,7 @@ def update(review_id):
 # 리뷰 삭제 요청을 처리하고 삭제된 리뷰를 반환한다.
 @review_bp.delete("/<int:review_id>")
 @jwt_required()
-def delete(review_id):
+def delete_review(review_id):
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
     user_id = int(get_jwt_identity())
 
