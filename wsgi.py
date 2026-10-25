@@ -9,7 +9,7 @@ app = create_app()
 if __name__ == '__main__':
     # 디버그 모드의 자동 재시작은 감시용 부모와 요청 처리용 자식 프로세스를 따로 띄운다.
     # 수집이 중복 실행되지 않도록 디버그일 때는 WERKZEUG_RUN_MAIN이 true인 자식에서만 시작한다.
-    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes", "on")
     if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         from app.domains.tour.scheduler import festival_sync_scheduler
 

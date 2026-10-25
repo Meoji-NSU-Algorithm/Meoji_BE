@@ -42,7 +42,6 @@ class ErrorCode(Enum):
     TOUR_SYNC_INVALID_DATA = (400, "축제 데이터가 올바르지 않습니다.")
     TOUR_SYNC_REQUIRED_FIELD = (400, "필수값이 비어 있습니다.")
     TOUR_SYNC_ID_MISMATCH = (400, "요청한 콘텐츠 ID와 응답이 다릅니다.")
-    TOUR_SYNC_CONTENT_NOT_FOUND = (404, "목록을 먼저 저장해야 합니다.")
     TOUR_SYNC_CONTENT_CHANGED = (409, "상세 수집 중 행사 정보가 삭제되었습니다.")
     TOUR_SYNC_DB_CONFLICT = (409, "DB 저장 중 무결성 충돌이 발생했습니다.")
     TOUR_SYNC_SEED_MISSING = (500, "카테고리·시도·태그 기준 데이터가 없습니다.")

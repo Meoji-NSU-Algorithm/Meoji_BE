@@ -52,7 +52,7 @@ def get_kakao_access_token(code: str) -> str:
     try:
         return resp.json()["access_token"]
     except (ValueError, KeyError, TypeError):
-        current_app.logger.warning("Kakao token response invalid: %s", resp.text)
+        current_app.logger.warning("Kakao token response invalid: status=%s", resp.status_code)
         raise BusinessException(ErrorCode.KAKAO_TOKEN_REQUEST_FAILED)
 
 def get_kakao_user_info(kakao_access_token: str) -> dict:

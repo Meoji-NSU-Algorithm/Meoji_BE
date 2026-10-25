@@ -282,12 +282,8 @@ class TourSyncService:
                 )
             setattr(row, target, value)
 
-    def _save(self, list_item, common, intro, require_existing=False):
+    def _save(self, list_item, common, intro):
         """목록과 상세 응답을 하나의 트랜잭션에서 Event와 태그로 저장하고 event id를 반환한다.
-
-        Args:
-            require_existing: True이면 기존 행이 없을 때 새로 만들지 않고
-                TOUR_SYNC_CONTENT_CHANGED를 발생시킨다.
 
         Raises:
             BusinessException: 검증 실패, 기준 데이터(카테고리·시도·태그) 누락,
@@ -327,9 +323,6 @@ class TourSyncService:
                     .with_for_update()
                 )
                 if row is None:
-                    # 상세만 갱신하는 경로에서 행이 중간에 삭제됐다면 새로 만들지 않는다.
-                    if require_existing:
-                        raise BusinessException(ErrorCode.TOUR_SYNC_CONTENT_CHANGED)
                     row = Event(tour_content_id=identifier)
 
                 # 응답에 없는 값은 잠금 후 읽은 최신 행 값으로 대체한다. API 호출 전에
