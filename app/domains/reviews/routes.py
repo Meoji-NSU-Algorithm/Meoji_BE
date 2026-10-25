@@ -7,14 +7,7 @@ from app.domains.reviews.schemas import (
     ReviewUpdateSchema,
     ReviewResponseSchema,
 )
-from app.domains.reviews.service import (
-    create_review,
-    get_reviews_by_event,
-    get_my_reviews,
-    get_rating_info,
-    update_review,
-    delete_review,
-)
+from app.domains.reviews import service as review_service
 
 # Review API에서 사용하는 Blueprint를 생성한다.
 #
@@ -26,10 +19,10 @@ from app.domains.reviews.service import (
 # routes.py에서 작성하는 Route 앞에 "/reviews"가 자동으로 붙는다.
 #
 # 예시)
-#   @review_bp.route("", methods=["POST"])
+#   @review_bp.post("")
 #   → POST /reviews
 #
-#   @review_bp.route("/my", methods=["GET"])
+#   @review_bp.get("/my")
 #   → GET /reviews/my
 #
 # 상위 Blueprint에서 "/api"를 사용하고 있다면
@@ -77,22 +70,22 @@ review_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
 # - ReviewResponseSchema
 #   → Review 객체를 API 응답 형식으로 변환한다.
 #
-# - create_review()
+# - review_service.create_review()
 #   → 새로운 리뷰를 생성한다.
 #
-# - get_reviews_by_event()
+# - review_service.get_reviews_by_event()
 #   → 특정 행사의 리뷰 목록을 조회한다.
 #
-# - get_my_reviews()
+# - review_service.get_my_reviews()
 #   → 현재 사용자가 작성한 리뷰 목록을 조회한다.
 #
-# - get_rating_info()
+# - review_service.get_rating_info()
 #   → 평균 평점과 리뷰 개수를 조회한다.
 #
-# - update_review()
+# - review_service.update_review()
 #   → 리뷰를 수정한다.
 #
-# - delete_review()
+# - review_service.delete_review()
 #   → 리뷰를 삭제한다.
 #
 # - CommonResponse.success()
@@ -106,7 +99,7 @@ review_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
 
 
 # 리뷰 생성 요청을 처리하고 생성된 리뷰를 반환한다.
-@review_bp.route("", methods=["POST"])
+@review_bp.post("")
 @jwt_required()
 def create():
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
@@ -119,7 +112,7 @@ def create():
     data["user_id"] = user_id
 
     # 리뷰 생성 Service를 호출한다.
-    result = create_review(data)
+    result = review_service.create_review(data)
 
     # 생성된 리뷰를 공통 응답 형식으로 반환한다.
     return jsonify(
@@ -130,11 +123,11 @@ def create():
 
 
 # 특정 행사의 리뷰 목록 조회 요청을 처리한다.
-@review_bp.route("/event/<int:event_id>", methods=["GET"])
+@review_bp.get("/event/<int:event_id>")
 @jwt_required()
 def get_by_event(event_id):
     # 행사 ID를 기준으로 리뷰 목록을 조회한다.
-    result = get_reviews_by_event(event_id)
+    result = review_service.get_reviews_by_event(event_id)
 
     # 조회된 리뷰 목록을 공통 응답 형식으로 반환한다.
     return jsonify(
@@ -145,11 +138,11 @@ def get_by_event(event_id):
 
 
 # 특정 행사의 평균 평점과 리뷰 개수 조회 요청을 처리한다.
-@review_bp.route("/event/<int:event_id>/rating", methods=["GET"])
+@review_bp.get("/event/<int:event_id>/rating")
 @jwt_required()
 def get_average_rating_by_event(event_id):
     # 행사 ID를 기준으로 평균 평점과 리뷰 개수를 조회한다.
-    rating_info = get_rating_info(event_id)
+    rating_info = review_service.get_rating_info(event_id)
 
     # 평점 정보를 공통 응답 형식으로 반환한다.
     return jsonify(
@@ -162,14 +155,14 @@ def get_average_rating_by_event(event_id):
 
 
 # 현재 로그인한 사용자의 리뷰 목록 조회 요청을 처리한다.
-@review_bp.route("/my", methods=["GET"])
+@review_bp.get("/my")
 @jwt_required()
 def get_my():
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
     user_id = int(get_jwt_identity())
 
     # 현재 사용자가 작성한 리뷰를 조회한다.
-    result = get_my_reviews(user_id)
+    result = review_service.get_my_reviews(user_id)
 
     # 조회된 리뷰 목록을 공통 응답 형식으로 반환한다.
     return jsonify(
@@ -180,7 +173,7 @@ def get_my():
 
 
 # 리뷰 수정 요청을 처리하고 수정된 리뷰를 반환한다.
-@review_bp.route("/<int:review_id>", methods=["PUT"])
+@review_bp.put("/<int:review_id>")
 @jwt_required()
 def update(review_id):
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
@@ -190,7 +183,7 @@ def update(review_id):
     data = ReviewUpdateSchema().load(request.get_json(silent=True) or {})
 
     # 리뷰 수정 Service를 호출한다.
-    result = update_review(review_id, user_id, data)
+    result = review_service.update_review(review_id, user_id, data)
 
     # 수정된 리뷰를 공통 응답 형식으로 반환한다.
     return jsonify(
@@ -201,14 +194,14 @@ def update(review_id):
 
 
 # 리뷰 삭제 요청을 처리하고 삭제된 리뷰를 반환한다.
-@review_bp.route("/<int:review_id>", methods=["DELETE"])
+@review_bp.delete("/<int:review_id>")
 @jwt_required()
 def delete(review_id):
     # JWT에서 현재 로그인한 사용자의 ID를 가져온다.
     user_id = int(get_jwt_identity())
 
     # 리뷰 삭제 Service를 호출한다.
-    result = delete_review(review_id, user_id)
+    result = review_service.delete_review(review_id, user_id)
 
     # 삭제된 리뷰를 공통 응답 형식으로 반환한다.
     return jsonify(

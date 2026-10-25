@@ -3,7 +3,7 @@ from app.domains.events.models import Event
 from app.domains.reviews.models import Review
 from app.domains.users.models import User
 from app.core.errors import BusinessException, ErrorCode
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 
 # 리뷰 API의 비즈니스 로직을 담당하는 서비스 모듈이다.
@@ -53,16 +53,16 @@ from sqlalchemy import func
 
 
 # 새로운 리뷰를 생성한다.
-def create_review(data):
+def create_review(data: dict) -> Review:
     # 리뷰 작성자의 존재 여부를 확인한다.
-    user = User.query.get(data["user_id"])
+    user = db.session.get(User, data["user_id"])
 
     # 존재하지 않는 사용자라면 예외를 발생시킨다.
     if user is None:
         raise BusinessException(ErrorCode.USER_NOT_FOUND)
 
     # 리뷰가 작성될 행사의 존재 여부를 확인한다.
-    event = Event.query.get(data["event_id"])
+    event = db.session.get(Event, data["event_id"])
 
     # 존재하지 않는 행사라면 예외를 발생시킨다.
     if event is None:
@@ -84,31 +84,32 @@ def create_review(data):
 
 
 # 특정 행사의 리뷰 목록을 조회한다.
-def get_reviews_by_event(event_id):
+def get_reviews_by_event(event_id: int) -> list[Review]:
     # 행사 ID를 기준으로 리뷰를 조회하고 최근 수정순으로 정렬한다.
-    reviews = Review.query.filter_by(event_id=event_id).order_by(
-        Review.updated_at.desc(),
-        Review.created_at.desc(),
+    reviews = db.session.scalars(
+        select(Review)
+        .where(Review.event_id == event_id)
+        .order_by(Review.updated_at.desc(), Review.created_at.desc())
     ).all()
 
     return reviews
 
 
 # 현재 사용자가 작성한 리뷰 목록을 조회한다.
-def get_my_reviews(user_id):
+def get_my_reviews(user_id: int) -> list[Review]:
     # 사용자 ID를 기준으로 작성한 리뷰를 조회한다.
-    reviews = Review.query.filter_by(user_id=user_id).all()
+    reviews = db.session.scalars(select(Review).where(Review.user_id == user_id)).all()
 
     return reviews
 
 
 # 특정 행사의 평균 평점과 리뷰 개수를 조회한다.
-def get_rating_info(event_id):
+def get_rating_info(event_id: int) -> dict:
     # 행사 ID를 기준으로 평균 평점과 리뷰 개수를 조회한다.
-    result = db.session.query(
-        func.avg(Review.rating),
-        func.count(Review.id)
-    ).filter(Review.event_id == event_id).first()
+    result = db.session.execute(
+        select(func.avg(Review.rating), func.count(Review.id))
+        .where(Review.event_id == event_id)
+    ).first()
 
     # 조회 결과에서 평균 평점과 리뷰 개수를 가져온다.
     average_rating = result[0]
@@ -128,9 +129,9 @@ def get_rating_info(event_id):
 
 
 # 본인이 작성한 리뷰를 수정한다.
-def update_review(review_id, user_id, data):
+def update_review(review_id: int, user_id: int, data: dict) -> Review:
     # 리뷰 ID로 리뷰를 조회한다.
-    review = Review.query.get(review_id)
+    review = db.session.get(Review, review_id)
 
     # 리뷰가 존재하지 않으면 예외를 발생시킨다.
     if review is None:
@@ -155,9 +156,9 @@ def update_review(review_id, user_id, data):
 
 
 # 본인이 작성한 리뷰를 삭제한다.
-def delete_review(review_id, user_id):
+def delete_review(review_id: int, user_id: int) -> Review:
     # 리뷰 ID로 리뷰를 조회한다.
-    review = Review.query.get(review_id)
+    review = db.session.get(Review, review_id)
 
     # 리뷰가 존재하지 않으면 예외를 발생시킨다.
     if review is None:

@@ -1,17 +1,7 @@
 # 리뷰 모델과 공통 시간 필드를 정의한다.
 
-from datetime import datetime, timezone
-
+from app.core.db import TimestampMixin
 from app.core.extensions import db
-
-
-# 모델의 생성 및 수정 시각을 공통으로 관리한다.
-class TimestampMixin:
-    # 레코드 생성 시 현재 UTC 시각을 저장한다.
-    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-
-    # 레코드 생성 시 저장하고 수정 시 현재 UTC 시각으로 갱신한다.
-    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 # 행사에 작성된 리뷰 정보를 저장한다.
