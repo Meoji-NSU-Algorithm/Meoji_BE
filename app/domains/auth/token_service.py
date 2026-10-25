@@ -54,6 +54,18 @@ def rotate_refresh_token(refresh_payload: dict) -> dict[str, str]:
     return issue_tokens(int(refresh_payload["sub"]))
 
 
+# noinspection PyArgumentList
+def revoke_jti(jti: str) -> None:
+    """jti 하나를 블록리스트에 등록한다. 이미 폐기된 jti여도 오류 없이 넘어간다(멱등)."""
+    # SAVEPOINT 안에서 저장해, unique 제약 위반이 나도 바깥 트랜잭션은 유지된다.
+    try:
+        with db.session.begin_nested():
+            db.session.add(TokenBlocklist(jti=jti))
+    except IntegrityError:
+        pass
+    db.session.commit()
+
+
 # SQLAlchemy 모델 생성자를 PyCharm이 인식하지 못해 나는 오탐을 끈다.
 # noinspection PyArgumentList
 def revoke_tokens(access_payload: dict, refresh_token: str) -> None:

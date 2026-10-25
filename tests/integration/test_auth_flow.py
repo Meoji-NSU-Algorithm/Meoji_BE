@@ -126,3 +126,15 @@ def test_access_endpoint_with_refresh_token_is_rejected(client, login, bearer):
 def test_garbage_bearer_token_is_invalid(client, bearer):
     """형식이 깨진 토큰은 401 AUTH_TOKEN_INVALID."""
     assert_error(client.get("/api/users/me", headers=bearer("abc.def.ghi")), 401, "AUTH_TOKEN_INVALID")
+
+
+def test_refresh_for_deleted_user_is_401_invalid(client, login, bearer, app_ctx):
+    """토큰의 유저가 사라졌으면 404가 아니라 401 AUTH_TOKEN_INVALID이고 재시도도 막힌다."""
+    from app.core.extensions import db
+    from app.domains.users.models import User
+    _, tokens, _ = login()
+    db.session.execute(db.delete(User))
+    db.session.commit()
+    resp = client.post("/api/auth/refresh", headers=bearer(tokens["refresh_token"]))
+    assert_error(resp, 401, "AUTH_TOKEN_INVALID")
+    assert_error(client.post("/api/auth/refresh", headers=bearer(tokens["refresh_token"])), 401, "AUTH_TOKEN_REVOKED")

@@ -76,12 +76,16 @@ def test_refresh_success(app_ctx, fake_kakao):
 
 
 def test_refresh_user_deleted(app_ctx):
-    """유저가 없으면 USER_NOT_FOUND이고 refresh는 폐기되지 않는다."""
+    """유저가 없으면 AUTH_TOKEN_INVALID(401)이고 제시된 refresh는 폐기되어 재시도해도 같은 결과다."""
     payload = decode_token(token_service.issue_tokens(4040)["refresh_token"])
     with pytest.raises(BusinessException) as e:
         service.refresh(payload)
-    assert e.value.error_code == ErrorCode.USER_NOT_FOUND
-    assert db.session.scalar(db.select(db.func.count()).select_from(TokenBlocklist)) == 0
+    assert e.value.error_code == ErrorCode.AUTH_TOKEN_INVALID
+    assert db.session.scalar(db.select(TokenBlocklist.id).filter_by(jti=payload["jti"])) is not None
+    # 이미 폐기된 jti여도 멱등이라 500 없이 같은 오류가 반환된다.
+    with pytest.raises(BusinessException) as e2:
+        service.refresh(payload)
+    assert e2.value.error_code == ErrorCode.AUTH_TOKEN_INVALID
 
 
 def test_refresh_reuse_revoked(app_ctx, fake_kakao):
