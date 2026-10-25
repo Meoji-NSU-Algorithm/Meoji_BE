@@ -23,20 +23,22 @@ def post_review(client, headers, event_id, rating=4.0, content="좋아요"):
 
 # ---------- events ----------
 
-def test_options_endpoints(client, refs):
-    """카테고리/시도 선택지가 sort_order 순으로 내려온다."""
+def test_options_endpoints(client, refs, login):
+    """카테고리(JWT 불필요)/시도(JWT 필요) 선택지가 sort_order 순으로 내려온다."""
+    h, _, _ = login()
     cats = client.get("/api/events/categories").get_json()
     assert cats["success"] is True
     assert [c["name"] for c in cats["data"]] == ["축제", "공연"]
     assert set(cats["data"][0]) == {"id", "name", "sort_order"}
-    sidos = client.get("/api/events/sidos").get_json()["data"]
+    sidos = client.get("/api/events/sidos", headers=h).get_json()["data"]
     assert [s["code"] for s in sidos] == ["44", "11"]
     assert set(sidos[0]) == {"code", "name", "short_name", "sort_order"}
     assert client.get("/api/events/categories?x=1").status_code == 400
 
 
-def test_list_filters_and_pagination(client, refs, make_event, make_tag):
-    """목록 필터, 페이지네이션, 범위 밖 페이지."""
+def test_list_filters_and_pagination(client, refs, make_event, make_tag, login):
+    """목록 필터(JWT 필요), 페이지네이션, 범위 밖 페이지."""
+    h, _, _ = login()
     tag = make_tag("야시장")
     a = make_event(title="벚꽃축제", tags=[tag], is_free=True)
     b = make_event(title="재즈공연", category=refs["cats"][1], sido=refs["sidos"][1], is_free=False, price=5000)
@@ -50,7 +52,7 @@ def test_list_filters_and_pagination(client, refs, make_event, make_tag):
     assert card["category"] == "축제" and card["sido"] == "충남"
 
     def ids(qs):
-        return [e["id"] for e in client.get(f"/api/events?{qs}").get_json()["data"]["events"]]
+        return [e["id"] for e in client.get(f"/api/events?{qs}", headers=h).get_json()["data"]["events"]]
 
     assert ids("q=벚꽃") == [a.id]
     assert ids("tag=야시장") == [a.id]
@@ -71,9 +73,10 @@ def test_list_filters_and_pagination(client, refs, make_event, make_tag):
 @pytest.mark.parametrize("qs", ["page=0", "size=101", "sort=bogus", "start_date=2026-1-1",
                                 "is_free=yes", "sido_code=4", "page=abc",
                                 "start_date=2026-02-02&end_date=2026-01-01", "page=1&page=2"])
-def test_list_invalid_query_returns_400(client, qs):
-    """잘못된 쿼리는 400 COMMON_INVALID_INPUT."""
-    err(client.get(f"/api/events?{qs}"), 400, "COMMON_INVALID_INPUT")
+def test_list_invalid_query_returns_400(client, qs, login):
+    """잘못된 쿼리는 400 COMMON_INVALID_INPUT (토큰이 있는 요청 기준)."""
+    h, _, _ = login()
+    err(client.get(f"/api/events?{qs}", headers=h), 400, "COMMON_INVALID_INPUT")
 
 
 def test_monthly_top(client, refs, make_event):
@@ -91,16 +94,17 @@ def test_monthly_top(client, refs, make_event):
     err(client.get("/api/events/monthly-top?size=0"), 400, "COMMON_INVALID_INPUT")
 
 
-def test_event_detail_and_view_count(client, refs, make_event):
+def test_event_detail_and_view_count(client, refs, make_event, login):
     """상세 조회마다 view_count가 오르고 DB에 반영된다."""
+    h, _, _ = login()
     event = make_event(title="상세행사", description="설명")
     eid = event.id
-    first = client.get(f"/api/events/{eid}")
+    first = client.get(f"/api/events/{eid}", headers=h)
     assert first.status_code == 200
     data = first.get_json()["data"]
     assert data["id"] == eid and data["title"] == "상세행사" and data["description"] == "설명"
     assert data["reviews"] == [] and data["review_count"] == 0 and data["average_rating"] == 0
-    client.get(f"/api/events/{eid}")
+    client.get(f"/api/events/{eid}", headers=h)
     db.session.remove()  # REPEATABLE READ 스냅샷을 버리고 새로 읽는다
     assert db.session.get(Event, eid).view_count == 2
     today = datetime.now(KST).date()
@@ -116,9 +120,10 @@ def test_event_detail_and_view_count(client, refs, make_event):
     ("/api/event", 404, "COMMON_NOT_FOUND"),
     ("/api/event/1", 404, "COMMON_NOT_FOUND"),
 ])
-def test_event_detail_invalid_ids(client, refs, path, status, code):
+def test_event_detail_invalid_ids(client, refs, path, status, code, login):
     """잘못된 id와 옛 경로는 envelope 에러."""
-    err(client.get(path), status, code)
+    h, _, _ = login()
+    err(client.get(path, headers=h), status, code)
 
 
 # ---------- reviews ----------
@@ -137,7 +142,7 @@ def test_review_journey(client, refs, make_event, login):
     assert set(r1) == {"id", "user_id", "event_id", "rating", "content", "created_at", "updated_at"}
     r2 = post_review(client, h2, eid, 3.0, "둘째").get_json()["data"]
 
-    detail = client.get(f"/api/events/{eid}").get_json()["data"]
+    detail = client.get(f"/api/events/{eid}", headers=h1).get_json()["data"]
     assert detail["review_count"] == 2 and detail["average_rating"] == 3.8
     assert {r["id"] for r in detail["reviews"]} == {r1["id"], r2["id"]}
 
@@ -258,3 +263,46 @@ def test_empty_update_body_returns_400(client, refs, make_event, login):
     rid = post_review(client, h, event.id).get_json()["data"]["id"]
     err(client.put(f"/api/reviews/{rid}", headers=h, json={}), 400, "COMMON_INVALID_INPUT")
     err(client.put(f"/api/reviews/{rid}", headers=h), 400, "COMMON_INVALID_INPUT")
+
+
+# ---------- 인증 정책 ----------
+
+@pytest.mark.parametrize("path", [
+    "/api/events",
+    "/api/events?page=1&size=5&sort=popular",
+    "/api/events/categories",
+    "/api/events/monthly-top",
+])
+def test_home_event_endpoints_do_not_require_jwt(client, refs, path):
+    """홈 화면용 API(카테고리, 월간 TOP, 필터 없는 목록)는 토큰 없이 호출할 수 있다."""
+    assert client.get(path).status_code == 200
+
+
+@pytest.mark.parametrize("path", [
+    "/api/events?q=벚꽃",
+    "/api/events?title=a",
+    "/api/events?venue=a",
+    "/api/events?tag=a",
+    "/api/events?category_id=1",
+    "/api/events?sido_code=44",
+    "/api/events?is_free=true",
+    "/api/events?start_date=2026-01-01",
+    "/api/events?end_date=2026-12-31",
+    "/api/events?page=1&q=a",
+    "/api/events/sidos",
+    "/api/events/1",
+])
+def test_search_sidos_and_detail_require_jwt(client, refs, path):
+    """검색·필터가 붙은 목록, 시도 목록, 상세는 토큰이 없으면 401이다."""
+    err(client.get(path), 401, "AUTH_UNAUTHORIZED")
+
+
+def test_empty_search_param_is_not_treated_as_search(client, refs):
+    """값이 비어 있는 검색 파라미터(q=)는 검색으로 보지 않아 토큰 없이 호출된다."""
+    assert client.get("/api/events?q=").status_code == 200
+
+
+def test_search_with_invalid_token_returns_401(client, refs):
+    """검색에 잘못된 토큰을 보내면 401이다."""
+    resp = client.get("/api/events?q=a", headers={"Authorization": "Bearer not.a.token"})
+    assert resp.status_code == 401

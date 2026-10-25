@@ -46,9 +46,10 @@ def test_validation_error_has_errors_extra(client):
     assert "unknown" in body["errors"]
 
 
-def test_business_error_returns_404_envelope(client, app_ctx):
+def test_business_error_returns_404_envelope(client, app_ctx, login):
     """비즈니스 예외(행사 없음)는 404 EVENT_NOT_FOUND."""
-    assert_envelope(client.get("/api/events/999999"), 404, "EVENT_NOT_FOUND")
+    h, _, _ = login()
+    assert_envelope(client.get("/api/events/999999", headers=h), 404, "EVENT_NOT_FOUND")
 
 
 def test_expired_access_token_returns_401(client, app_ctx):

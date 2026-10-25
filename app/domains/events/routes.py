@@ -1,9 +1,13 @@
 """행사 조회 API 라우트(`/api/events`).
 
 요청 검증은 schemas, 조회 로직은 service에 위임하고 여기서는 공통 응답만 만든다.
+
+인증: 홈 화면에서 쓰는 카테고리·월간 TOP·필터 없는 목록은 JWT 없이 호출할 수 있다.
+검색·필터가 붙은 목록, 시도 목록, 상세는 JWT가 필요하다.
 """
 
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required, verify_jwt_in_request
 
 from app.core.response import CommonResponse
 from app.domains.events.schemas import (
@@ -24,6 +28,11 @@ from app.domains.reviews import service as review_service
 # 부모 Blueprint(api_bp)가 /api를 붙인다.
 events_bp = Blueprint("events", __name__, url_prefix="/events")
 
+# 하나라도 값이 있으면 검색으로 보고 JWT를 요구하는 목록 쿼리 파라미터. page, size, sort는 검색이 아니다.
+SEARCH_PARAMS = (
+    "q", "title", "venue", "tag", "category_id", "sido_code", "is_free", "start_date", "end_date",
+)
+
 
 @events_bp.get("/categories")
 def list_categories():
@@ -38,10 +47,11 @@ def list_categories():
 
 
 @events_bp.get("/sidos")
+@jwt_required()
 def list_sidos():
     """시도 선택지 목록을 반환한다.
 
-    GET /api/events/sidos. 쿼리 파라미터는 받지 않는다. 성공 시 200.
+    GET /api/events/sidos. JWT 필요. 쿼리 파라미터는 받지 않는다. 성공 시 200.
     """
     EmptyQuerySchema().load(request.args)
     sidos = event_service.list_sidos()
@@ -55,10 +65,14 @@ def list_events():
 
     GET /api/events. 쿼리: q, title, venue, tag, category_id, sido_code, is_free,
     start_date, end_date, sort, page, size. 결과가 없어도 200과 빈 목록을 반환한다.
+    검색 파라미터(SEARCH_PARAMS)가 하나라도 있으면 JWT가 필요하고, page/size/sort만 있으면 JWT 없이 호출할 수 있다.
 
     Raises:
+        AUTH_UNAUTHORIZED 등: 검색인데 JWT가 없거나 올바르지 않음(401).
         COMMON_INVALID_INPUT: 쿼리 검증 실패(400).
     """
+    if any(request.args.get(name) for name in SEARCH_PARAMS):
+        verify_jwt_in_request()
     query = EventListQuerySchema().load(request.args)
     result = event_service.list_events(query)
     data = EventListResponseSchema().dump(result)
@@ -82,10 +96,11 @@ def monthly_top_events():
 
 
 @events_bp.get("/<int:event_id>")
+@jwt_required()
 def get_event(event_id):
     """행사 상세와 리뷰 목록·평점 요약을 한 번에 반환하고 조회수를 기록한다.
 
-    GET /api/events/<event_id>. 쿼리 파라미터는 받지 않는다. 성공 시 200.
+    GET /api/events/<event_id>. JWT 필요. 쿼리 파라미터는 받지 않는다. 성공 시 200.
 
     Raises:
         COMMON_INVALID_INPUT: event_id 또는 쿼리 검증 실패(400).

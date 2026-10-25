@@ -74,6 +74,7 @@ pytest
 - 행사 응답 JSON 키가 camelCase에서 snake_case로 바뀌었습니다. (예: `startDate` -> `start_date`, `totalCount` -> `total_count`)
 - 행사 목록과 월간 TOP은 결과가 없어도 404 대신 `200`과 빈 목록을 반환합니다.
 - `GET /api/reviews/event/<event_id>`와 `GET /api/reviews/event/<event_id>/rating`은 기존처럼 로그인이 필요하고, 리뷰나 행사가 없으면 404가 아니라 200과 빈 목록(평점은 0점)을 반환합니다.
+- 행사 API의 로그인(JWT) 정책: 홈 화면용인 카테고리, 월간 TOP, **검색·필터 파라미터가 없는 목록**은 토큰 없이 호출할 수 있습니다. 검색·필터가 붙은 목록(`q`, `title`, `venue`, `tag`, `category_id`, `sido_code`, `is_free`, `start_date`, `end_date` 중 하나라도 값이 있는 경우), 시도 목록, 행사 상세는 토큰이 없으면 401입니다.
 - 404/405 같은 HTTP 에러의 `code`가 `COMMON_NOT_FOUND`, `COMMON_METHOD_NOT_ALLOWED` 형식으로 통일되었습니다.
 
 ## 2. Git 브랜치 전략
