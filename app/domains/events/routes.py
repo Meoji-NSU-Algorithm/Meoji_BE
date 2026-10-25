@@ -20,8 +20,8 @@ from app.domains.events import service as event_service
 from app.domains.reviews import service as review_service
 
 
-# 부모 Blueprint가 /api를 붙이므로 여기서는 행사 경로 /event만 지정한다.
-events_bp = Blueprint("events", __name__, url_prefix="/event")
+# 부모 Blueprint가 /api를 붙이므로 여기서는 행사 경로 /events만 지정한다.
+events_bp = Blueprint("events", __name__, url_prefix="/events")
 
 
 @events_bp.get("/categories")
@@ -46,7 +46,7 @@ def list_sidos():
 def list_events():
     # 한국 시간 기준 이미 끝난 행사는 제외한다. q 통합 검색과 title·venue·tag
     # 세부 검색을 포함한 나머지 조건은 스키마에서 검증하고 서비스에서 적용한다.
-    # 모두 같은 GET /api/event 경로를 사용하며, 응답의 행사 카드 형식도 동일하다.
+    # 모두 같은 GET /api/events 경로를 사용하며, 응답의 행사 카드 형식도 동일하다.
     query = EventListQuerySchema().load(request.args)
     result = event_service.list_events(query)
     data = EventListResponseSchema().dump(result)

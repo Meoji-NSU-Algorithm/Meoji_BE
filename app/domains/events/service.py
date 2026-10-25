@@ -81,9 +81,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
             .limit(query["size"] - len(rows))
         ).all()
         rows.extend((event, 0) for event in recommendations)
-    # DB에 보여줄 현재 행사가 전혀 없을 때만 행사 없음 오류를 반환한다.
-    if not rows:
-        raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
+    # 보여줄 현재 행사가 없으면 events는 빈 목록이다. 오류로 처리하지 않는다.
     return {
         "month": f"{month.year:04d}-{month.month:02d}",
         "events": [
@@ -94,7 +92,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
 
 def list_events(query: dict) -> dict:
     # 요청에 있는 필터만 SQL 조건에 추가한다. 태그 검색은 EXISTS를 사용해
-    # 태그가 여러 개 맞아도 한 행사가 중복되거나 totalCount가 부풀지 않게 한다.
+    # 태그가 여러 개 맞아도 한 행사가 중복되거나 total_count가 부풀지 않게 한다.
     # 지난 행사는 리뷰와 함께 DB에 보관하되 목록 화면에서는 제외한다.
     # 오늘 종료하는 행사는 오늘까지 표시한다. 다른 검색 조건보다 먼저
     # 이 조건을 넣어 모든 카테고리·지역·검색 목록에 동일하게 적용한다.
@@ -136,7 +134,7 @@ def list_events(query: dict) -> dict:
     if tag_keyword:
         # 소개글에서 추출되어 event_tags로 연결된 태그 이름만 검사한다.
         # 태그 연결 테이블을 직접 JOIN하면 한 행사에 여러 태그가 맞을 때
-        # 목록과 totalCount가 중복된다. EXISTS로 연결 여부만 확인한다.
+        # 목록과 total_count가 중복된다. EXISTS로 연결 여부만 확인한다.
         conditions.append(Event.tags.any(Tag.name.ilike(tag_keyword, escape="\\")))
 
     # 페이지네이션 전 전체 건수를 세어 프론트가 페이지 수를 계산하게 한다.
@@ -162,9 +160,7 @@ def list_events(query: dict) -> dict:
         .limit(size)
     )
     events = db.session.scalars(statement).all()
-    # 검색 결과가 없거나 요청 페이지가 범위를 넘으면 빈 목록 대신 404를 반환한다.
-    if not events:
-        raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
+    # 검색 결과가 없거나 요청 페이지가 범위를 넘으면 events는 빈 목록이다(total_count는 그대로).
     return {
         "total_count": total_count,
         "page": page,

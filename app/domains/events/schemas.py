@@ -50,15 +50,15 @@ class CategoryOptionSchema(Schema):
     # 화면에 name을 표시하고 선택한 id를 목록 API의 category_id로 전달한다.
     id = fields.Integer()
     name = fields.String()
-    sort_order = fields.Integer(data_key="sortOrder")
+    sort_order = fields.Integer()
 
 
 class SidoOptionSchema(Schema):
-    # 칩에는 shortName, 전체 지역명에는 name을 쓴다. code는 문자열 그대로 전달한다.
+    # 칩에는 short_name, 전체 지역명에는 name을 쓴다. code는 문자열 그대로 전달한다.
     code = fields.String()
     name = fields.String()
-    short_name = fields.String(data_key="shortName")
-    sort_order = fields.Integer(data_key="sortOrder")
+    short_name = fields.String()
+    sort_order = fields.Integer()
 
 
 class EventListQuerySchema(QuerySchema):
@@ -129,21 +129,21 @@ class EventCardSchema(Schema):
     # 목록 카드의 표시 이름과 필터 재선택에 필요한 분류 ID·지역 코드를 내보낸다.
     id = fields.Integer()
     title = fields.String()
-    category_id = fields.Integer(data_key="categoryId")
+    category_id = fields.Integer()
     category = fields.Function(lambda event: event.category.name)
-    sido_code = fields.String(data_key="sidoCode")
+    sido_code = fields.String()
     sido = fields.Function(lambda event: event.sido.short_name)
-    start_date = fields.Date(data_key="startDate")
-    end_date = fields.Date(data_key="endDate")
-    venue_name = fields.String(data_key="venueName", allow_none=True)
-    thumbnail_url = fields.String(data_key="thumbnailUrl", allow_none=True)
+    start_date = fields.Date()
+    end_date = fields.Date()
+    venue_name = fields.String(allow_none=True)
+    thumbnail_url = fields.String(allow_none=True)
     price = fields.Integer(allow_none=True)
-    is_free = fields.Boolean(data_key="isFree", allow_none=True)
+    is_free = fields.Boolean(allow_none=True)
 
 
 class EventListResponseSchema(Schema):
-    # totalCount는 현재 페이지 건수가 아니라 같은 필터의 전체 결과 건수다.
-    total_count = fields.Integer(data_key="totalCount")
+    # total_count는 현재 페이지 건수가 아니라 같은 필터의 전체 결과 건수다.
+    total_count = fields.Integer()
     page = fields.Integer()
     size = fields.Integer()
     events = fields.List(fields.Nested(EventCardSchema))
@@ -169,12 +169,12 @@ class MonthlyTopQuerySchema(QuerySchema):
 class MonthlyTopEventSchema(Schema):
     # 서비스의 행사 객체와 월간 조회수를 카드 필드 하나로 합쳐 반환한다.
     event = fields.Nested(EventCardSchema)
-    monthly_views = fields.Integer(data_key="monthlyViews")
+    monthly_views = fields.Integer()
 
     @post_dump
     def flatten_card(self, data, **kwargs):
-        # 내부의 event 묶음을 풀어 기존 카드와 동일한 필드 옆에 monthlyViews를 둔다.
-        return {**data["event"], "monthlyViews": data["monthlyViews"]}
+        # 내부의 event 묶음을 풀어 기존 카드와 동일한 필드 옆에 monthly_views를 둔다.
+        return {**data["event"], "monthly_views": data["monthly_views"]}
 
 
 class MonthlyTopResponseSchema(Schema):
@@ -186,32 +186,31 @@ class EventDetailSchema(EventCardSchema):
     # 카드 필드에 행사 소개·연락처·지도 좌표를 더해 상세 화면에 사용한다.
     description = fields.String(allow_none=True)
     address = fields.String(allow_none=True)
-    address_detail = fields.String(data_key="addressDetail", allow_none=True)
-    play_time = fields.String(data_key="playTime", allow_none=True)
-    fee_text = fields.String(data_key="feeText", allow_none=True)
-    image_url = fields.String(data_key="imageUrl", allow_none=True)
+    address_detail = fields.String(allow_none=True)
+    play_time = fields.String(allow_none=True)
+    fee_text = fields.String(allow_none=True)
+    image_url = fields.String(allow_none=True)
     latitude = fields.Float(allow_none=True)
     longitude = fields.Float(allow_none=True)
     organizer = fields.String(allow_none=True)
-    contact_phone = fields.String(data_key="contactPhone", allow_none=True)
-    homepage_url = fields.String(data_key="homepageUrl", allow_none=True)
-    is_permanent = fields.Boolean(data_key="isPermanent")
+    contact_phone = fields.String(allow_none=True)
+    homepage_url = fields.String(allow_none=True)
+    is_permanent = fields.Boolean()
 
 
 class EventDetailResponseSchema(Schema):
-    # GET /api/event/<id>의 data를 만든다. 행사 모델과 리뷰 목록, 평점 집계는
+    # GET /api/events/<id>의 data를 만든다. 행사 모델과 리뷰 목록, 평점 집계는
     # 라우트에서 따로 조회하므로 여기서 하나의 응답 형태로 묶어 직렬화한다.
     # 각 리뷰는 기존 리뷰 API와 같은 스키마를 써서 필드 이름과 형식을 맞춘다.
     event = fields.Nested(EventDetailSchema)
     reviews = fields.List(fields.Nested(ReviewResponseSchema))
-    # 내부 Python 키는 snake_case이지만 API 응답에서는 camelCase로 내보낸다.
-    review_count = fields.Integer(data_key="reviewCount")
-    average_rating = fields.Float(data_key="averageRating")
+    review_count = fields.Integer()
+    average_rating = fields.Float()
 
     @post_dump
     def flatten_event(self, data, **kwargs):
         # Nested 직렬화 결과는 {"event": {...}, "reviews": [...]} 형태다.
-        # 기존 상세 응답의 title, startDate 등을 event 안에 넣으면 프론트의
+        # 기존 상세 응답의 title, start_date 등을 event 안에 넣으면 프론트의
         # 접근 경로가 바뀌므로 event만 풀고 리뷰 관련 필드를 옆에 추가한다.
         event = data.pop("event")
         return {**event, **data}

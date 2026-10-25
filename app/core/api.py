@@ -17,8 +17,8 @@
 #   /api  +  /auth   +  /logout   →  POST /api/auth/logout    로그아웃
 #   /api  +  /users  +  /me       →  GET  /api/users/me       내 정보 조회
 #   /api  +  /reviews + (없음)    →  POST /api/reviews        리뷰 작성
-#   /api  +  /event  + (없음)    →  GET  /api/event          진행 중·예정 행사 목록
-#   /api  +  /event  + /<id>     →  GET  /api/event/<id>     행사 상세
+#   /api  +  /events + (없음)    →  GET  /api/events         진행 중·예정 행사 목록
+#   /api  +  /events + /<id>     →  GET  /api/events/<id>    행사 상세
 #   자식 Blueprint의 url_prefix에는 "/api"를 다시 쓰지 않는다.
 #   중복 지정하면 /api/api/auth/... 같은 주소가 된다.
 #
@@ -34,7 +34,7 @@ from flask import Blueprint
 from app.domains.auth.routes import auth_bp       # 인증 관련 API (/auth/...)
 from app.domains.users.routes import users_bp     # 유저 관련 API (/users/...)
 from app.domains.reviews.routes import review_bp  # 리뷰 관련 API (/reviews/...)
-from app.domains.events.routes import events_bp   # 행사 조회 API (/event/...)
+from app.domains.events.routes import events_bp   # 행사 조회 API (/events/...)
 
 # "api"는 Blueprint 이름. url_for()로 URL을 만들 때 "api.auth.kakao_login" 처럼
 # 부모 이름.자식 이름.함수명 형태의 endpoint 이름에 쓰인다.
