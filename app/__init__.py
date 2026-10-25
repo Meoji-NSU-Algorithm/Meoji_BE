@@ -31,7 +31,7 @@ def create_app(config_class: type = Config) -> Flask:
 
     # jwt_callbacks는 import되는 순간 데코레이터로 콜백이 jwt에 등록되므로 import 자체가 목적이다.
     # 빠지면 로그아웃된 토큰이 계속 통과하고 JWT 오류 응답도 공통 형식을 벗어난다.
-    # 모듈 최상단에서 import하면 app 패키지 초기화 중 순환 import가 생기므로 여기서 import한다.
+    # 콜백 등록이 앱 생성 흐름에서 일어난다는 점이 드러나도록 create_app() 안에서 import한다.
     from app.core import jwt_callbacks  # noqa: F401
 
     register_error_handlers(app)

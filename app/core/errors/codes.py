@@ -42,7 +42,6 @@ class ErrorCode(Enum):
     TOUR_SYNC_INVALID_DATA = (400, "축제 데이터가 올바르지 않습니다.")
     TOUR_SYNC_REQUIRED_FIELD = (400, "필수값이 비어 있습니다.")
     TOUR_SYNC_ID_MISMATCH = (400, "요청한 콘텐츠 ID와 응답이 다릅니다.")
-    TOUR_SYNC_CONTENT_CHANGED = (409, "상세 수집 중 행사 정보가 삭제되었습니다.")
     TOUR_SYNC_DB_CONFLICT = (409, "DB 저장 중 무결성 충돌이 발생했습니다.")
     TOUR_SYNC_SEED_MISSING = (500, "카테고리·시도·태그 기준 데이터가 없습니다.")
     # 전체 수집은 끝까지 진행했지만 report.failures가 남은 경우.
@@ -65,17 +64,21 @@ class ErrorCode(Enum):
     AUTH_TOKEN_REVOKED = (401, "로그아웃된 토큰입니다.")
 
     # --- KAKAO ---
-    # 인가 코드(code)로 카카오 토큰을 발급받지 못한 경우.
+    # 인가 코드(code) 자체에 문제가 있어 카카오가 토큰을 발급하지 않은 경우(HTTP 4xx).
     # code는 일회용이고 약 10분만 유효해 만료/재사용이 가장 흔한 원인이다.
+    # 카카오 장애나 서버의 카카오 설정 오류는 이 코드가 아니라 KAKAO_API_UNAVAILABLE을 쓴다.
     # 프론트는 카카오 로그인을 처음부터 다시 시작해야 한다.
     KAKAO_TOKEN_REQUEST_FAILED = (401, "카카오 인가 코드가 유효하지 않습니다.")
-    # 카카오 서버와 통신하지 못했거나(타임아웃/연결 실패) 예상 밖의 응답을 받은 경우
+    # 사용자의 잘못이 아닌 카카오 연동 실패. 타임아웃/연결 실패, 카카오 5xx·429,
+    # JSON이 아닌 오류 본문, 서버의 카카오 설정 오류(invalid_client, KOE010, KOE101),
+    # 토큰 응답에 access_token이 없는 경우가 모두 여기에 해당한다.
     KAKAO_API_UNAVAILABLE = (502, "카카오 서버와 통신할 수 없습니다.")
     # 사용자 정보에 필수 항목(이메일 등)이 없는 경우. 동의항목 미동의가 주된 원인이다.
     KAKAO_PROFILE_INVALID = (400, "카카오 계정 정보를 가져올 수 없습니다. 이메일 제공에 동의해주세요.")
 
     # --- USER ---
-    # 토큰은 유효하지만 해당 id의 유저가 DB에 없는 경우(탈퇴 등)
+    # 토큰은 유효하지만 해당 id의 유저가 DB에 없는 경우(탈퇴 등).
+    # 토큰 재발급(refresh)에서는 이 코드 대신 AUTH_TOKEN_INVALID(401)를 쓴다.
     USER_NOT_FOUND = (404, "사용자를 찾을 수 없습니다.")
     # 같은 이메일을 다른 카카오 계정이 이미 사용 중인 경우
     USER_EMAIL_CONFLICT = (409, "이미 다른 계정에서 사용 중인 이메일입니다.")
