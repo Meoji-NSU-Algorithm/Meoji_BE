@@ -17,17 +17,64 @@
    ```
 2. 의존성 설치
    ```bash
-   # 새로 의존성 설치할 때마다 requirements.txt 생성
-   pip freeze > requirements.txt
-
-   # 클론 후 의존성 받아올 때 
+   # 클론 후 의존성 받아올 때 (개발/테스트까지 하려면 requirements-dev.txt)
    pip install -r requirements.txt
+   pip install -r requirements-dev.txt
    ```
+   - 패키지를 새로 설치했다면 **운영에 필요한 것만** `requirements.txt`에 직접 추가합니다. 개발 가상환경에서 `pip freeze > requirements.txt`를 하면 pytest 같은 개발용 패키지까지 섞이므로 사용하지 않습니다. 테스트용 패키지는 `requirements-dev.txt`에 추가합니다.
+   - `cryptography`는 코드에서 직접 import하지 않지만, MySQL 8 기본 인증 방식(`caching_sha2_password`)으로 PyMySQL이 접속할 때 필요합니다.
 3. 앱 실행
    ```bash
    python wsgi.py
    ```
-4. 접속 주소: `http://127.0.0.1:5000` (`wsgi.py`에서 `app.run(debug=True)`로 실행하며, 호스트/포트를 별도 지정하지 않아 Flask 기본값을 사용합니다.)
+   - 디버그 모드(코드 수정 시 자동 재시작)는 기본으로 꺼져 있습니다. 로컬 개발에서는 `.env`에 `FLASK_DEBUG=1`을 추가하세요. 외부에서 접근 가능한 환경에서 디버그 모드를 켜면 위험하므로 배포 환경에서는 켜지 않습니다.
+   - 축제 데이터 자동 수집 스케줄러는 `python wsgi.py`로 실행할 때만 시작됩니다. `flask run`이나 gunicorn으로 띄우면 시작되지 않습니다.
+4. 접속 주소: `http://127.0.0.1:5000` (호스트/포트를 별도 지정하지 않아 Flask 기본값을 사용합니다.)
+
+## 1-1. 프로젝트 구조
+
+기능(도메인)별로 폴더를 나누고, 한 도메인의 라우트·서비스·모델·스키마를 같은 폴더에서 찾을 수 있습니다.
+
+```
+app/
+├─ __init__.py        create_app() 앱 팩토리
+├─ models.py          모든 도메인 모델을 import (Flask-Migrate가 모델을 인식하게 하는 용도)
+├─ core/              도메인 공통 코드
+│  ├─ config.py  extensions.py  response.py  jwt_callbacks.py
+│  ├─ api.py          /api 부모 Blueprint, 도메인 Blueprint 등록
+│  ├─ db.py  time.py  공용 TimestampMixin, KST 상수
+│  └─ errors/         ErrorCode, BusinessException, 전역 에러 핸들러
+└─ domains/
+   ├─ auth/     routes  service  kakao_client  token_service  models  schemas
+   ├─ users/    routes  service  models  schemas
+   ├─ events/   routes  service  models  schemas
+   ├─ reviews/  routes  service  models  schemas
+   └─ tour/     client  sync_service  state_service  scheduler  models
+tests/
+├─ conftest.py   전용 MySQL 테스트 DB 생성/삭제
+├─ unit/<도메인>/  도메인별 단위 테스트
+└─ integration/    HTTP 흐름 통합 테스트
+```
+
+- 새 도메인은 `app/domains/<도메인>/`에 만들고 `app/core/api.py`에 Blueprint를 등록합니다. 도메인 폴더의 `__init__.py`는 비워 둡니다. 도메인끼리 서로 import할 때 순환 import가 생기는 것을 막기 위해서입니다.
+- 새 모델을 만들면 `app/models.py`에도 import를 추가합니다.
+
+## 1-2. 테스트 실행
+
+```bash
+pytest
+```
+
+- `.env`의 `SQLALCHEMY_DATABASE_URI`와 같은 MySQL 서버에 `<DB이름>_test_<프로세스ID>` 이름의 임시 DB를 만들어 사용하고, 테스트가 끝나면 삭제합니다. 개발 DB는 건드리지 않습니다. 접속 계정에 `CREATE DATABASE` 권한이 필요합니다.
+- 외부 API(Kakao, TourAPI)는 호출하지 않고 mock으로 대체합니다.
+
+## 1-3. API 변경 사항 (구조 리팩토링 이후)
+
+- 행사 API 경로가 `/api/event/...`에서 `/api/events/...`로 바뀌었습니다.
+- 행사 응답 JSON 키가 camelCase에서 snake_case로 바뀌었습니다. (예: `startDate` -> `start_date`, `totalCount` -> `total_count`)
+- 행사 목록과 월간 TOP은 결과가 없어도 404 대신 `200`과 빈 목록을 반환합니다.
+- `GET /api/reviews/event/<event_id>`와 `GET /api/reviews/event/<event_id>/rating`은 로그인 없이 조회할 수 있고, 존재하지 않는 행사는 404를 반환합니다.
+- 404/405 같은 HTTP 에러의 `code`가 `COMMON_NOT_FOUND`, `COMMON_METHOD_NOT_ALLOWED` 형식으로 통일되었습니다.
 
 ## 2. Git 브랜치 전략
 
