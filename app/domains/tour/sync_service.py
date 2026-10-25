@@ -11,7 +11,7 @@ from html import unescape
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
-from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessException, ErrorCode
@@ -448,6 +448,16 @@ class TourSyncService:
                             "code": error.error_code.code,
                             "reason": error.message,
                             "extra": error.extra,
+                        })
+                    except SQLAlchemyError as error:
+                        # 데드락·락 대기·연결 끊김 같은 일시적 DB 오류가 전체 수집과 보고서를 날리지 않게 한다.
+                        # 세션은 _save의 begin() 컨텍스트가 롤백한다. 원문에 데이터가 섞일 수 있어 클래스명만 남긴다.
+                        report["failures"].append({
+                            "page": page,
+                            "content_id": identifier,
+                            "code": ErrorCode.TOUR_SYNC_DB_CONFLICT.code,
+                            "reason": ErrorCode.TOUR_SYNC_DB_CONFLICT.message,
+                            "extra": {"reason": "database_error", "error_type": type(error).__name__},
                         })
         except BusinessException as error:
             # 목록 조회가 실패하면 이후 페이지를 알 수 없어 수집을 중단한다.

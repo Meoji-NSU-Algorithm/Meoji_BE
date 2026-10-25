@@ -331,3 +331,37 @@ def test_overlong_coordinate_precision_rounds_not_fails(seeded):
     report, _ = run([list_item("1", mapx="127.123456789", mapy="36.123456789")])
     assert report["saved"] == 1
     assert events()["1"].longitude == Decimal("127.1234568")
+
+
+def _fail_save_for(monkeypatch, bad_id, error):
+    """bad_id 건의 _save만 주어진 예외로 실패시킨다."""
+    original = TourSyncService._save
+
+    def fake(self, item, common, intro):
+        if item["contentid"] == bad_id:
+            raise error
+        return original(self, item, common, intro)
+
+    monkeypatch.setattr(TourSyncService, "_save", fake)
+
+
+def test_transient_db_error_skips_only_that_item(seeded, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    _fail_save_for(monkeypatch, "2", OperationalError("SELECT secret", {}, Exception("deadlock 1213")))
+    report, _ = run([list_item("1"), list_item("2"), list_item("3")])
+    assert report["saved"] == 2 and report["complete"] is False
+    assert len(report["failures"]) == 1
+    failure = report["failures"][0]
+    assert failure["content_id"] == "2" and failure["page"] == 1
+    assert failure["code"] == ErrorCode.TOUR_SYNC_DB_CONFLICT.code
+    assert failure["extra"] == {"reason": "database_error", "error_type": "OperationalError"}
+    # 원문 SQL·DB 메시지는 보고서에 남지 않는다.
+    assert "secret" not in str(failure) and "deadlock" not in str(failure)
+    assert set(events()) == {"1", "3"}
+
+
+def test_non_db_unexpected_error_still_propagates(seeded, monkeypatch):
+    _fail_save_for(monkeypatch, "2", RuntimeError("boom"))
+    with pytest.raises(RuntimeError):
+        run([list_item("1"), list_item("2"), list_item("3")])
