@@ -15,7 +15,7 @@ from app.domains.users.models import User
 def get_or_create_kakao_user(info: dict) -> tuple[User, bool]:
     """카카오 사용자 정보로 유저를 찾고, 없으면 만든다. (유저, 신규여부)를 반환한다.
 
-    info: kakao_auth_service.get_kakao_user_info()의 반환값
+    info: kakao_client.get_kakao_user_info()의 반환값
           {"kakao_id": int, "email": str, "nickname": str, "profile_image": str | None}
 
     반환값 예: (User 객체, True)  → 이번에 회원가입됨

@@ -24,7 +24,7 @@ from app.core.extensions import db
 from app.domains.auth.models import TokenBlocklist
 
 
-def issue_tokens(user_id: int) -> dict:
+def issue_tokens(user_id: int) -> dict[str, str]:
     """유저 id로 우리 서비스의 access/refresh 토큰 쌍을 발급한다.
 
     로그인(auth_service.login_with_kakao)과 재발급(rotate_refresh_token)에서 같이 쓴다.
@@ -42,7 +42,7 @@ def issue_tokens(user_id: int) -> dict:
 # PyCharm 오탐 경고 끄기: TokenBlocklist(jti=...)에 "예기치 않은 인수" 경고가 뜨지만 코드는 정상이다.
 #   (이유는 app/domains/users/service.py의 get_or_create_kakao_user 위 주석 참고)
 # noinspection PyArgumentList
-def rotate_refresh_token(refresh_payload: dict) -> dict:
+def rotate_refresh_token(refresh_payload: dict) -> dict[str, str]:
     """사용한 refresh 토큰은 폐기하고 새 토큰 쌍을 발급한다 (Refresh Token Rotation).
 
     [Refresh Token Rotation이란?]
@@ -95,7 +95,7 @@ def revoke_tokens(access_payload: dict, refresh_token: str) -> None:
     # TokenBlocklist.jti는 unique 컬럼이라 같은 jti를 또 넣으면 IntegrityError → 500이 난다.
     # 그래서 블록리스트에 없을 때만 추가한다.
     refresh_jti = refresh_payload["jti"]
-    if not db.session.query(TokenBlocklist.id).filter_by(jti=refresh_jti).scalar():
+    if db.session.scalar(db.select(TokenBlocklist.id).filter_by(jti=refresh_jti)) is None:
         db.session.add(TokenBlocklist(jti=refresh_jti))
 
     # access와 refresh 폐기를 한 번에 커밋한다. (하나만 저장되고 하나는 빠지는 일이 없도록 한 트랜잭션으로)

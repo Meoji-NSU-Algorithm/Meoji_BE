@@ -3,7 +3,7 @@
 # 이 파일은 직접 DB를 만지거나 JWT를 만들지 않는다. 대신 역할별로 나뉜 서비스를
 # 올바른 순서로 호출만 한다. 라우트(app/domains/auth/routes.py)는 이 파일의 함수만 호출한다.
 #
-#   kakao_auth_service : 카카오 서버와 통신 (code → 카카오 토큰 → 카카오 사용자 정보)
+#   kakao_client : 카카오 서버와 통신 (code → 카카오 토큰 → 카카오 사용자 정보)
 #   user_service       : 우리 DB의 User 조회/생성
 #   token_service      : 우리 서비스의 JWT 발급/재발급/폐기
 #
@@ -13,11 +13,11 @@
 #   - JWT 정책(만료시간, 로테이션 등)을 바꿀 때는 token_service.py 한 파일만 보면 된다.
 #   - 각 서비스가 서로를 모르기 때문에(카카오 서비스는 JWT를 모르고, 토큰 서비스는 카카오를 모름)
 #     한 곳을 고쳐도 다른 곳이 깨질 일이 적다.
-from app.domains.auth import kakao_client as kakao_auth_service, token_service
+from app.domains.auth import kakao_client, token_service
 from app.domains.users import service as user_service
 
 
-def login_with_kakao(code: str) -> dict:
+def login_with_kakao(code: str) -> dict[str, str | bool]:
     """카카오 인가 코드로 로그인한다. 처음 온 사용자면 회원가입까지 같이 처리한다.
 
     전체 흐름:
@@ -33,9 +33,9 @@ def login_with_kakao(code: str) -> dict:
     반환값: {"access_token": ..., "refresh_token": ..., "is_new_user": True/False}
     """
     # ① code → 카카오 access_token (code가 만료/재사용이면 여기서 KAKAO_TOKEN_REQUEST_FAILED 발생)
-    kakao_token = kakao_auth_service.get_kakao_access_token(code)
+    kakao_token = kakao_client.get_kakao_access_token(code)
     # ② 카카오 access_token → {"kakao_id", "email", "nickname", "profile_image"}
-    info = kakao_auth_service.get_kakao_user_info(kakao_token)
+    info = kakao_client.get_kakao_user_info(kakao_token)
 
     # ③ 우리 DB의 유저 조회/생성. is_new_user는 이번 요청에서 회원가입이 일어났는지 여부
     user, is_new_user = user_service.get_or_create_kakao_user(info)
@@ -48,7 +48,7 @@ def login_with_kakao(code: str) -> dict:
         "is_new_user": is_new_user,
     }
 
-def refresh(refresh_payload: dict) -> dict:
+def refresh(refresh_payload: dict) -> dict[str, str]:
     """refresh 토큰으로 access/refresh 토큰 쌍을 새로 발급한다.
 
     refresh_payload: 라우트에서 get_jwt()로 꺼낸 refresh 토큰의 내용물
