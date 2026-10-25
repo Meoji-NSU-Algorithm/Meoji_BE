@@ -2,13 +2,13 @@ from flask import Flask, jsonify  # Flask 앱 객체 생성, 에러 핸들러 �
 from marshmallow import ValidationError  # 스키마 load() 검증 실패 시 발생하는 예외 (아래 핸들러에서 400으로 변환)
 from sqlalchemy.exc import DBAPIError, TimeoutError as DatabaseTimeoutError
 
-from app.config import Config  # JWT_SECRET_KEY, DB URI 등 환경설정 값을 담은 클래스
+from app.core.config import Config  # JWT_SECRET_KEY, DB URI 등 환경설정 값을 담은 클래스
 
-from app.errors import BusinessException, ErrorCode  # 공통 비지니스 예외 클래스
-from app.common_response import CommonResponse  # 공통 응답 반환
+from app.core.errors import BusinessException, ErrorCode  # 공통 비지니스 예외 클래스
+from app.core.response import CommonResponse  # 공통 응답 반환
 from werkzeug.exceptions import HTTPException, MethodNotAllowed
 
-from app.extensions import db, migrate, jwt  # DB/마이그레이션/JWT 확장 객체 (app에 바인딩할 예정)
+from app.core.extensions import db, migrate, jwt  # DB/마이그레이션/JWT 확장 객체 (app에 바인딩할 예정)
 
 # models 패키지를 import해서 User, TokenBlocklist 등 모델 클래스들을 로드시킴.
 # 이 코드에서 직접 모델을 쓰지는 않지만, Flask-Migrate가 마이그레이션을 자동 생성할 때
@@ -38,7 +38,7 @@ def create_app(config_class: type = Config) -> Flask:
     # 함수 안에서 import하는 이유: 파일 맨 위에서 import하면 app 패키지가 아직 초기화 중이라
     # 순환 import 문제가 생길 수 있어서, create_app()이 실행되는 시점에 불러온다.
     # `# noqa: F401`은 "import해놓고 안 쓴다"는 린터 경고를 끄는 표시 (의도된 import라서).
-    from app import jwt_callbacks  # noqa: F401
+    from app.core import jwt_callbacks  # noqa: F401
 
     register_error_handlers(app)  # 모든 도메인의 요청·DB·HTTP 오류를 공통 형식으로 처리
     register_blueprints(app)      # 인증·회원·리뷰·행사 API Blueprint를 등록
@@ -49,14 +49,14 @@ def create_app(config_class: type = Config) -> Flask:
 def register_blueprints(app: Flask):
     """모든 API 라우트를 앱에 등록한다.
 
-    개별 Blueprint(auth_bp, users_bp, review_bp, events_bp 등)는 app/api/__init__.py의 부모 Blueprint(api_bp)에
+    개별 Blueprint(auth_bp, users_bp, review_bp, events_bp 등)는 app/core/api.py의 부모 Blueprint(api_bp)에
     이미 묶여 있어서, 여기서는 api_bp 하나만 등록하면 된다.
-    새 도메인 API를 추가할 때는 이 함수가 아니라 app/api/__init__.py를 수정한다.
-    최종 URL 목록도 app/api/__init__.py 상단 주석에 정리되어 있다.
+    새 도메인 API를 추가할 때는 이 함수가 아니라 app/core/api.py를 수정한다.
+    최종 URL 목록도 app/core/api.py 상단 주석에 정리되어 있다.
     """
-    # 함수 안에서 import: app.api → routes → services → models로 연쇄 import되므로
+    # 함수 안에서 import: app.core.api → routes → service → models로 연쇄 import되므로
     # app 패키지 초기화가 끝난 뒤(create_app 실행 시점)에 불러와야 순환 import가 안 난다.
-    from app.api import api_bp
+    from app.core.api import api_bp
 
     app.register_blueprint(api_bp)
 
@@ -70,12 +70,12 @@ def register_error_handlers(app: Flask):
     아래 핸들러들은 "얼마나 예상된 예외인가" 순으로 안전망이 겹쳐 있다.
     1) BusinessException : 우리가 의도적으로 raise하는 비즈니스 실패 케이스.
        새 실패 케이스가 생겨도 이 함수나 새 예외 클래스를 추가할 필요 없이
-       app/errors/codes.py의 ErrorCode에 멤버 하나만 추가하고
+       app/core/errors/codes.py의 ErrorCode에 멤버 하나만 추가하고
        raise BusinessException(ErrorCode.그_멤버)만 하면 된다.
     2) ValidationError : Marshmallow 스키마의 요청값 검증 실패.
        400 COMMON_INVALID_INPUT과 필드별 errors를 응답한다.
     ※ JWT 관련 실패(토큰 없음/만료/위조/로그아웃됨)는 여기가 아니라
-       app/jwt_callbacks.py의 콜백들이 처리한다.
+       app/core/jwt_callbacks.py의 콜백들이 처리한다.
     3) HTTPException : 존재하지 않는 라우트(404), 잘못된 HTTP 메서드(405) 등
        Flask/Werkzeug가 라우팅 단계에서 자체적으로 던지는 예외.
     4) DBAPIError/TimeoutError : DB 연결·풀·일시적 잠금 장애는 503으로 구분한다.
@@ -88,7 +88,7 @@ def register_error_handlers(app: Flask):
     @app.errorhandler(BusinessException)
     def handle_business_exception(e: BusinessException):
         # e.status_code / e.error_code 둘 다 BusinessException이 아니라 e.error_code(ErrorCode)에서
-        # 정해진 값이다 (app/errors/exception.py, app/errors/codes.py 참고).
+        # 정해진 값이다 (app/core/errors/exception.py, app/core/errors/codes.py 참고).
         return jsonify(CommonResponse.error(e.error_code, e.message, e.extra)), e.status_code
 
     @app.errorhandler(ValidationError)

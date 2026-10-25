@@ -12,7 +12,7 @@ if __name__ == '__main__':
     # 실행한다. WERKZEUG_RUN_MAIN이 true인 자식에서만 시작해야 두 번
     # 수집하지 않는다. 수동 실행 파일은 이 경로를 거치지 않는다.
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        from app.services.tour_scheduler import festival_sync_scheduler
+        from app.domains.tour.scheduler import festival_sync_scheduler
 
         festival_sync_scheduler.start(app)
     # 예약 작업은 daemon 스레드라 서버 시작을 기다리게 하지 않는다.
