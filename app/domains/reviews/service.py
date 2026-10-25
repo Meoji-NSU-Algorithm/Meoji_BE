@@ -9,6 +9,10 @@ from app.domains.reviews.models import Review
 from app.domains.users.models import User
 from app.core.errors import BusinessException, ErrorCode
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+
+# MySQL의 중복 키(unique 위반) 오류 번호
+_MYSQL_DUP_ENTRY = 1062
 
 
 def create_review(data: dict) -> Review:
@@ -18,7 +22,8 @@ def create_review(data: dict) -> Review:
         data: user_id, event_id, rating, content.
 
     Raises:
-        BusinessException: 사용자가 없으면 USER_NOT_FOUND, 행사가 없으면 EVENT_NOT_FOUND.
+        BusinessException: 사용자가 없으면 USER_NOT_FOUND, 행사가 없으면 EVENT_NOT_FOUND,
+            이미 같은 행사에 리뷰를 썼으면 REVIEW_ALREADY_EXISTS.
     """
     user = db.session.get(User, data["user_id"])
 
@@ -30,6 +35,14 @@ def create_review(data: dict) -> Review:
     if event is None:
         raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
 
+    # 사용자당 행사별 리뷰는 하나만 허용한다.
+    already = db.session.scalar(
+        select(Review.id).where(Review.user_id == data["user_id"], Review.event_id == data["event_id"])
+    )
+
+    if already is not None:
+        raise BusinessException(ErrorCode.REVIEW_ALREADY_EXISTS)
+
     review = Review(
         user_id=data["user_id"],
         event_id=data["event_id"],
@@ -38,9 +51,26 @@ def create_review(data: dict) -> Review:
     )
 
     db.session.add(review)
-    db.session.commit()
+
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+
+        # 동시 중복 제출은 unique 위반(1062)으로만 판단하고, FK 위반 등은 그대로 올린다.
+        if _is_duplicate_entry(e):
+            raise BusinessException(ErrorCode.REVIEW_ALREADY_EXISTS) from e
+
+        raise
 
     return review
+
+
+def _is_duplicate_entry(error: IntegrityError) -> bool:
+    """IntegrityError가 MySQL unique 위반(errno 1062)인지 확인한다."""
+    args = getattr(error.orig, "args", ())
+
+    return bool(args) and args[0] == _MYSQL_DUP_ENTRY
 
 
 def get_reviews_by_event(event_id: int) -> list[Review]:

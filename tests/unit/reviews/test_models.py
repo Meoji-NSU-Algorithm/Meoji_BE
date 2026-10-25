@@ -64,3 +64,12 @@ def test_updated_at_changes_on_update(make_review, user, event):
     db.session.commit()
     assert r.updated_at > datetime(2020, 1, 1)
     assert r.created_at == datetime(2020, 1, 1)
+
+
+def test_unique_user_event_enforced_by_db(make_review, user, event):
+    make_review(user, event)
+    db.session.add(Review(user_id=user.id, event_id=event.id, rating=3, content="dup"))
+    with pytest.raises(IntegrityError) as e:
+        db.session.commit()
+    assert e.value.orig.args[0] == 1062
+    db.session.rollback()

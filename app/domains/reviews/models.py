@@ -20,7 +20,9 @@ class Review(TimestampMixin, db.Model):
 
     content = db.Column(db.Text, nullable=False)
 
-    # API 검증을 우회한 입력에도 평점 범위와 0.5 단위를 보장한다.
+    # API 검증을 우회한 입력에도 평점 범위와 0.5 단위를 보장하고,
+    # 한 사용자가 한 행사에 리뷰를 하나만 쓰도록 DB에서 강제한다.
     __table_args__ = (
         db.CheckConstraint("rating >= 0.5 AND rating <= 5 AND rating * 2 = FLOOR(rating * 2)", name="ck_review_rating"),
+        db.UniqueConstraint("user_id", "event_id", name="uq_review_user_event"),
     )

@@ -42,13 +42,69 @@ def test_create_review_both_missing_reports_user_first(event):
     assert code_of(e) == ErrorCode.USER_NOT_FOUND
 
 
-def test_create_duplicate_review_currently_allowed(user, event):
-    # 현재 동작: 같은 사용자가 같은 행사에 여러 리뷰를 쓸 수 있다 (unique 제약/중복 검사 없음).
+def test_create_duplicate_review_rejected(user, event):
     d = {"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x"}
-    a = service.create_review(d)
-    b = service.create_review(d)
-    assert a.id != b.id
+    service.create_review(d)
+    with pytest.raises(BusinessException) as e:
+        service.create_review(d)
+    assert code_of(e) == ErrorCode.REVIEW_ALREADY_EXISTS
+    assert len(service.get_reviews_by_event(event.id)) == 1
+
+
+def test_create_same_user_different_event_ok(user, event, make_event):
+    other = make_event()
+    service.create_review({"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x"})
+    service.create_review({"user_id": user.id, "event_id": other.id, "rating": 4, "content": "x"})
+    assert len(service.get_my_reviews(user.id)) == 2
+
+
+def test_create_different_user_same_event_ok(user, event, make_user):
+    other = make_user()
+    service.create_review({"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x"})
+    service.create_review({"user_id": other.id, "event_id": event.id, "rating": 5, "content": "y"})
     assert len(service.get_reviews_by_event(event.id)) == 2
+
+
+def test_update_own_review_unaffected_by_unique(user, event):
+    r = service.create_review({"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x"})
+    updated = service.update_review(r.id, user.id, {"rating": 5, "content": "수정"})
+    assert updated.content == "수정"
+
+
+def test_create_race_maps_unique_violation_and_session_usable(user, event, make_event, monkeypatch):
+    """사전 조회를 통과한 뒤 경쟁 요청이 먼저 확정되면 REVIEW_ALREADY_EXISTS로 변환한다."""
+    from sqlalchemy import text
+    real_commit = db.session.commit
+
+    def racing_commit():
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO review (user_id, event_id, rating, content, created_at, updated_at) "
+                "VALUES (:u, :e, 3.0, 'rival', NOW(), NOW())"), {"u": user.id, "e": event.id})
+        return real_commit()
+
+    monkeypatch.setattr(db.session, "commit", racing_commit)
+    with pytest.raises(BusinessException) as e:
+        service.create_review({"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x"})
+    assert code_of(e) == ErrorCode.REVIEW_ALREADY_EXISTS
+    monkeypatch.undo()
+
+    # 롤백 후 세션이 계속 사용 가능해야 한다.
+    other = make_event()
+    service.create_review({"user_id": user.id, "event_id": other.id, "rating": 4, "content": "x"})
+    assert len(service.get_reviews_by_event(event.id)) == 1
+
+
+def test_create_non_duplicate_integrity_error_reraised(user, event, monkeypatch):
+    """unique 위반(1062)이 아닌 IntegrityError는 그대로 올리고 세션은 롤백한다."""
+    from sqlalchemy.exc import IntegrityError
+
+    def boom():
+        raise IntegrityError("stmt", {}, Exception(1452, "fk fail"))
+
+    monkeypatch.setattr(db.session, "commit", boom)
+    with pytest.raises(IntegrityError):
+        service.create_review({"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x"})
 
 
 def test_create_review_rating_out_of_range_bypassing_schema_raises_db_error(user, event):
@@ -70,14 +126,15 @@ def test_reviews_by_event_nonexistent_returns_empty(app_ctx):
 
 
 def test_reviews_by_event_ordering(make_user, event, make_event, make_review):
-    u = make_user()
+    # 사용자당 행사별 리뷰는 하나뿐이므로 리뷰마다 다른 사용자를 쓴다.
+    u1, u2, u3, u4 = make_user(), make_user(), make_user(), make_user()
     other = make_event()
     t = datetime
-    a = make_review(u, event, created_at=t(2026, 1, 1), updated_at=t(2026, 1, 5))
-    b = make_review(u, event, created_at=t(2026, 1, 3), updated_at=t(2026, 1, 4))
-    c = make_review(u, event, created_at=t(2026, 1, 2), updated_at=t(2026, 1, 4))
-    d = make_review(u, event, created_at=t(2026, 1, 2), updated_at=t(2026, 1, 4))
-    make_review(u, other)
+    a = make_review(u1, event, created_at=t(2026, 1, 1), updated_at=t(2026, 1, 5))
+    b = make_review(u2, event, created_at=t(2026, 1, 3), updated_at=t(2026, 1, 4))
+    c = make_review(u3, event, created_at=t(2026, 1, 2), updated_at=t(2026, 1, 4))
+    d = make_review(u4, event, created_at=t(2026, 1, 2), updated_at=t(2026, 1, 4))
+    make_review(u1, other)
     got = [r.id for r in service.get_reviews_by_event(event.id)]
     # updated_at desc: a; 동률(1/4)은 created_at desc: b; 동률은 id desc: d, c
     assert got == [a.id, b.id, d.id, c.id]

@@ -85,6 +85,8 @@ class ErrorCode(Enum):
     REVIEW_NOT_FOUND = (404, "리뷰를 찾을 수 없습니다.")
     # 리뷰 작성자가 아닌 사용자가 수정/삭제하려는 경우
     REVIEW_FORBIDDEN = (403, "리뷰를 수정하거나 삭제할 권한이 없습니다.")
+    # 같은 사용자가 같은 행사에 이미 리뷰를 작성한 경우
+    REVIEW_ALREADY_EXISTS = (409, "이미 이 행사에 리뷰를 작성했습니다.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
