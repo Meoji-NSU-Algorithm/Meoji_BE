@@ -69,13 +69,64 @@ def test_access_token_network_error_unavailable(app_ctx, monkeypatch, exc):
     assert e.value.error_code == ErrorCode.KAKAO_API_UNAVAILABLE
 
 
-@pytest.mark.parametrize("status", [400, 401, 500])
-def test_access_token_non_200_failed(app_ctx, monkeypatch, status):
-    """200이 아닌 응답은 KAKAO_TOKEN_REQUEST_FAILED이다."""
-    monkeypatch.setattr(kakao_client.requests, "post", MagicMock(return_value=_resp(status=status, json_body={})))
+def _call_expecting(monkeypatch, **resp_kwargs):
+    monkeypatch.setattr(kakao_client.requests, "post", MagicMock(return_value=_resp(**resp_kwargs)))
     with pytest.raises(BusinessException) as e:
         kakao_client.get_kakao_access_token("CODE")
-    assert e.value.error_code == ErrorCode.KAKAO_TOKEN_REQUEST_FAILED
+    return e.value.error_code
+
+
+@pytest.mark.parametrize("status,body", [
+    (400, {"error": "invalid_grant", "error_code": "KOE320"}),
+    (400, {"error": "invalid_request", "error_code": "KOE303"}),
+    (401, {"error": "invalid_grant"}),
+    (403, {}),
+    (400, {"error": ["unexpected-type"]}),
+])
+def test_access_token_client_4xx_failed(app_ctx, monkeypatch, status, body):
+    """code 문제로 보이는 4xx는 KAKAO_TOKEN_REQUEST_FAILED(401)이다."""
+    assert _call_expecting(monkeypatch, status=status, json_body=body) == ErrorCode.KAKAO_TOKEN_REQUEST_FAILED
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 429])
+def test_access_token_5xx_and_429_unavailable(app_ctx, monkeypatch, status):
+    """5xx와 429는 KAKAO_API_UNAVAILABLE이다."""
+    assert _call_expecting(monkeypatch, status=status, json_body={"error": "x"}) == ErrorCode.KAKAO_API_UNAVAILABLE
+
+
+@pytest.mark.parametrize("status", [400, 401, 403])
+def test_access_token_non_json_error_body_unavailable(app_ctx, monkeypatch, status):
+    """JSON이 아닌 오류 본문은 KAKAO_API_UNAVAILABLE이다."""
+    code = _call_expecting(monkeypatch, status=status, json_exc=ValueError("no json"), text="<html>")
+    assert code == ErrorCode.KAKAO_API_UNAVAILABLE
+
+
+@pytest.mark.parametrize("body", [
+    {"error": "invalid_client"},
+    {"error": "unauthorized_client"},
+    {"error": "invalid_request", "error_code": "KOE010"},
+    {"error": "invalid_request", "error_code": "KOE101"},
+])
+def test_access_token_server_config_error_unavailable_and_logged(app_ctx, monkeypatch, caplog, body):
+    """서버의 카카오 설정 오류는 502이며 ERROR 로그에 원문 body 없이 필드만 남는다."""
+    body = {**body, "error_description": "bad client", "secret_like": "SHOULD-NOT-LEAK"}
+    with caplog.at_level("ERROR"):
+        code = _call_expecting(monkeypatch, status=401, json_body=body)
+    assert code == ErrorCode.KAKAO_API_UNAVAILABLE
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert errors
+    assert "bad client" in errors[0].getMessage()
+    assert "SHOULD-NOT-LEAK" not in caplog.text
+
+
+def test_access_token_4xx_log_truncated_and_no_raw_body(app_ctx, monkeypatch, caplog):
+    """4xx 경고 로그는 필드를 200자로 자르고 원문 body를 남기지 않는다."""
+    body = {"error": "invalid_grant", "error_description": "d" * 500, "extra": "RAW-LEAK"}
+    with caplog.at_level("WARNING"):
+        _call_expecting(monkeypatch, status=400, json_body=body)
+    assert "d" * 200 in caplog.text
+    assert "d" * 201 not in caplog.text
+    assert "RAW-LEAK" not in caplog.text
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -84,13 +135,13 @@ def test_access_token_non_200_failed(app_ctx, monkeypatch, status):
     {"json_body": {"other": 1}},
     {"json_body": ["access_token"]},
     {"json_body": None},
+    {"json_body": {"access_token": ""}},
+    {"json_body": {"access_token": 123}},
+    {"json_body": {"access_token": None}},
 ])
-def test_access_token_bad_body_failed(app_ctx, monkeypatch, kwargs):
-    """JSON이 아니거나 access_token이 없으면 KAKAO_TOKEN_REQUEST_FAILED이다."""
-    monkeypatch.setattr(kakao_client.requests, "post", MagicMock(return_value=_resp(**kwargs)))
-    with pytest.raises(BusinessException) as e:
-        kakao_client.get_kakao_access_token("CODE")
-    assert e.value.error_code == ErrorCode.KAKAO_TOKEN_REQUEST_FAILED
+def test_access_token_bad_200_body_unavailable(app_ctx, monkeypatch, kwargs):
+    """200이어도 access_token이 비어 있거나 JSON이 아니면 KAKAO_API_UNAVAILABLE이다."""
+    assert _call_expecting(monkeypatch, status=200, **kwargs) == ErrorCode.KAKAO_API_UNAVAILABLE
 
 
 # ---------- get_kakao_user_info ----------
