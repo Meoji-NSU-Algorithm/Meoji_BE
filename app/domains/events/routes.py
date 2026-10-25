@@ -15,9 +15,9 @@ from app.domains.events.schemas import (
     MonthlyTopResponseSchema,
     SidoOptionSchema,
 )
-from app.domains.events.service import EventService
+from app.domains.events import service as event_service
 # 행사 상세 응답에 같은 행사의 리뷰 목록과 평균 평점·리뷰 수를 포함하기 위해 사용한다.
-from app.domains.reviews.service import get_rating_info, get_reviews_by_event
+from app.domains.reviews import service as review_service
 
 
 # 부모 Blueprint가 /api를 붙이므로 여기서는 행사 경로 /event만 지정한다.
@@ -28,7 +28,7 @@ events_bp = Blueprint("events", __name__, url_prefix="/event")
 def list_categories():
     # 입력값 없는 선택지 조회. 잘못 붙인 쿼리는 스키마에서 거부한다.
     EmptyQuerySchema().load(request.args)
-    categories = EventService.list_categories()
+    categories = event_service.list_categories()
     data = CategoryOptionSchema(many=True).dump(categories)
     return jsonify(CommonResponse.success(data)), 200
 
@@ -37,7 +37,7 @@ def list_categories():
 def list_sidos():
     # 받은 code는 프론트에서 선택한 뒤 행사 목록 요청의 sido_code로 전달한다.
     EmptyQuerySchema().load(request.args)
-    sidos = EventService.list_sidos()
+    sidos = event_service.list_sidos()
     data = SidoOptionSchema(many=True).dump(sidos)
     return jsonify(CommonResponse.success(data)), 200
 
@@ -48,7 +48,7 @@ def list_events():
     # 세부 검색을 포함한 나머지 조건은 스키마에서 검증하고 서비스에서 적용한다.
     # 모두 같은 GET /api/event 경로를 사용하며, 응답의 행사 카드 형식도 동일하다.
     query = EventListQuerySchema().load(request.args)
-    result = EventService.list_events(query)
+    result = event_service.list_events(query)
     data = EventListResponseSchema().dump(result)
     return jsonify(CommonResponse.success(data)), 200
 
@@ -57,7 +57,7 @@ def list_events():
 def monthly_top_events():
     # 조회할 월과 카드 개수를 검증한다. 월 경계와 순위 계산은 서비스에서 맡는다.
     query = MonthlyTopQuerySchema().load(request.args)
-    result = EventService.monthly_top(query)
+    result = event_service.monthly_top(query)
     data = MonthlyTopResponseSchema().dump(result)
     return jsonify(CommonResponse.success(data)), 200
 
@@ -69,11 +69,11 @@ def get_event(event_id):
     # 평점 요약까지 이 요청에서 조회해 프론트가 리뷰 API를 별도로 호출하지 않게 한다.
     EmptyQuerySchema().load(request.args)
     params = EventPathSchema().load({"event_id": event_id})
-    event = EventService.get_event(params["event_id"], request_method=request.method)
+    event = event_service.get_event(params["event_id"], request_method=request.method)
     # 행사 조회가 먼저 성공해야 없는 행사에 대한 리뷰 조회를 하지 않는다.
     # 기존 리뷰 API와 같은 서비스 함수를 재사용해 리뷰 정렬과 평점 계산을 맞춘다.
-    reviews = get_reviews_by_event(event.id)
-    rating = get_rating_info(event.id)
+    reviews = review_service.get_reviews_by_event(event.id)
+    rating = review_service.get_rating_info(event.id)
     # 리뷰가 없으면 reviews는 빈 목록이고, 평점 서비스는 개수와 평균을 0으로 준다.
     # 응답 스키마가 행사 필드를 최상위에 두고 리뷰 관련 필드를 추가한다.
     data = EventDetailResponseSchema().dump({
