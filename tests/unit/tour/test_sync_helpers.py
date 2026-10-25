@@ -175,6 +175,5 @@ def test_homepage_javascript_href_rejected():
     assert _homepage_url('<a href="javascript:alert(1)">x</a>') is None
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: sync_service.py URL_PATTERN lookbehind (?<![\\w@/]) 때문에 프로토콜 상대 URL(//cdn.example.com/x)에서 'cdn.'을 건너뛰고 https://example.com/x 로 호스트가 바뀐다")
 def test_homepage_protocol_relative_keeps_host():
     assert _homepage_url("//cdn.example.com/x") == "https://cdn.example.com/x"
