@@ -1,5 +1,7 @@
-# 저장된 행사를 화면에 제공하는 조회 서비스. 외부 TourAPI 수집과 분리한다.
-# 라우트가 SQL 조건과 페이지 계산을 몰라도 되도록 목록·상세 조회를 맡는다.
+"""저장된 행사의 목록·월간 순위·상세 조회와 조회수 기록을 담당한다.
+
+TourAPI 수집(tour.sync_service)과는 분리되어 DB에 저장된 데이터만 읽는다.
+"""
 
 from calendar import monthrange
 from datetime import date, datetime
@@ -14,33 +16,37 @@ from app.domains.events.models import Category, Event, EventDailyView, Sido, Tag
 
 
 def _contains_keyword(value: str | None) -> str | None:
-    # q와 세부 검색어를 모두 SQL의 '문자열 포함' 검색 패턴으로 바꾼다.
-    # 앞뒤 공백만 제거하며, 공백만 보냈으면 검색 조건을 만들지 않는다.
+    """검색어를 LIKE 부분 일치 패턴으로 바꾼다. 공백뿐이거나 None이면 None을 반환한다."""
     text = (value or "").strip()
     if not text:
         return None
-    # LIKE에서 %는 여러 글자, _는 한 글자를 뜻한다. 사용자가 입력한 기호는
-    # 검색 명령이 아닌 실제 글자로 찾도록 \\를 앞에 붙인다. \\ 자체도 이스케이프한다.
-    # 앞뒤의 %만 부분 일치 검색을 위해 코드에서 붙인다.
+    # 사용자가 입력한 %, _, \\가 LIKE 와일드카드로 해석되지 않도록 이스케이프한다.
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
 
 
 def list_categories() -> list[Category]:
-    # 행사 유무와 관계없이 기준 테이블의 전체 선택지를 표시 순서대로 반환한다.
-    # 같은 sort_order는 ID로 정렬해 응답 순서를 일정하게 유지한다.
+    """카테고리 전체를 표시 순서대로 반환한다. 같은 순서값은 ID로 정렬한다."""
     statement = select(Category).order_by(Category.sort_order, Category.id)
     return db.session.scalars(statement).all()
 
 def list_sidos() -> list[Sido]:
-    # 지역명이나 순서를 코드에 고정하지 않고 마이그레이션으로 넣은 기준값을 읽는다.
-    # code는 숫자 수량이 아닌 식별 문자열이므로 응답에서도 두 자리를 유지한다.
+    """시도 전체를 표시 순서대로 반환한다. 기준값은 마이그레이션이 시드한다."""
     statement = select(Sido).order_by(Sido.sort_order, Sido.code)
     return db.session.scalars(statement).all()
 
 def monthly_top(query: dict, today: date | None = None) -> dict:
-    # 선택한 달이 없으면 한국 시간의 현재 달을 사용한다. 조회 기록이
-    # 부족할 때 채울 추천 행사도 같은 날짜의 진행 여부로 판단한다.
+    """월간 조회수 상위 행사를 반환한다.
+
+    조회 기록이 size보다 적으면 종료일이 가까운 진행 중 행사로 채운다(monthly_views=0).
+
+    Args:
+        query: month(None이면 KST 기준 이번 달 1일)와 size.
+        today: 기준 날짜. 생략하면 KST 오늘이며 테스트에서 주입한다.
+
+    Returns:
+        month(YYYY-MM)와 events(`{"event", "monthly_views"}` 목록). 대상이 없으면 빈 목록.
+    """
     current_date = today or datetime.now(KST).date()
     month = query["month"] or current_date.replace(day=1)
     month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])
@@ -58,8 +64,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
         .subquery()
     )
 
-    # 카테고리와 관계없이 해당 월에 조회수 기록이 있는 현재 행사를
-    # 순위에 넣는다. 월간 합계가 같으면 행사 ID 내림차순으로 고정한다.
+    # 이미 끝난 행사는 제외한다. 월간 합계가 같으면 ID 내림차순으로 순서를 고정한다.
     statement = (
         select(Event, monthly_views.c.monthly_views)
         .join(monthly_views, monthly_views.c.event_id == Event.id)
@@ -70,8 +75,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
     )
     rows = [(event, views) for event, views in db.session.execute(statement).all()]
     if len(rows) < query["size"]:
-        # 신규 서비스처럼 일별 조회 기록이 없거나 적어도 빈 화면을 내지 않는다.
-        # 이미 순위에 든 ID를 제외하고 종료일이 가까운 현재 행사부터 채운다.
+        # 조회 기록이 적어도 빈 응답이 되지 않도록 순위에 없는 행사로 채운다.
         ranked_ids = [event.id for event, _ in rows]
         recommendations = db.session.scalars(
             select(Event)
@@ -81,7 +85,6 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
             .limit(query["size"] - len(rows))
         ).all()
         rows.extend((event, 0) for event in recommendations)
-    # 보여줄 현재 행사가 없으면 events는 빈 목록이다. 오류로 처리하지 않는다.
     return {
         "month": f"{month.year:04d}-{month.month:02d}",
         "events": [
@@ -91,11 +94,15 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
     }
 
 def list_events(query: dict) -> dict:
-    # 요청에 있는 필터만 SQL 조건에 추가한다. 태그 검색은 EXISTS를 사용해
-    # 태그가 여러 개 맞아도 한 행사가 중복되거나 total_count가 부풀지 않게 한다.
-    # 지난 행사는 리뷰와 함께 DB에 보관하되 목록 화면에서는 제외한다.
-    # 오늘 종료하는 행사는 오늘까지 표시한다. 다른 검색 조건보다 먼저
-    # 이 조건을 넣어 모든 카테고리·지역·검색 목록에 동일하게 적용한다.
+    """종료되지 않은 행사를 조건에 맞게 검색해 한 페이지를 반환한다.
+
+    Args:
+        query: 스키마로 검증된 필터·검색어·sort·page·size.
+
+    Returns:
+        total_count(필터 전체 건수), page, size, events. 범위를 넘은 페이지는 events가 빈 목록이다.
+    """
+    # 지난 행사는 DB에 보관하되 목록에서만 숨긴다. 종료일이 오늘이면 아직 표시한다.
     conditions = [Event.end_date >= datetime.now(KST).date()]
     if query["category_id"] is not None:
         conditions.append(Event.category_id == query["category_id"])
@@ -108,8 +115,7 @@ def list_events(query: dict) -> dict:
     if query["end_date"] is not None:
         conditions.append(Event.start_date <= query["end_date"])
 
-    # q는 기존 통합 검색이다. ilike()로 대소문자를 구분하지 않고,
-    # 제목·장소·연결된 태그 중 한 곳에만 검색어가 있어도 결과에 넣는다.
+    # q는 제목·장소·태그 중 한 곳이라도 일치하면 포함하는 통합 검색이다.
     keyword = _contains_keyword(query["q"])
     if keyword:
         conditions.append(
@@ -120,29 +126,25 @@ def list_events(query: dict) -> dict:
             )
         )
 
-    # 세부 검색은 각자 지정한 필드만 검사한다. 조건 목록은 아래 SQL의
-    # where(*conditions)에서 AND로 묶여 q·카테고리·지역 등과 함께 적용된다.
+    # 세부 검색(title/venue/tag)은 지정한 필드만 검사하며 다른 조건과 AND로 결합한다.
     title_keyword = _contains_keyword(query["title"])
     if title_keyword:
-        # 제목에만 포함된 문자열을 찾는다. 장소·태그 일치는 여기서 제외한다.
         conditions.append(Event.title.ilike(title_keyword, escape="\\"))
     venue_keyword = _contains_keyword(query["venue"])
     if venue_keyword:
-        # 장소명(events.venue_name)에만 포함된 문자열을 찾는다.
         conditions.append(Event.venue_name.ilike(venue_keyword, escape="\\"))
     tag_keyword = _contains_keyword(query["tag"])
     if tag_keyword:
-        # 소개글에서 추출되어 event_tags로 연결된 태그 이름만 검사한다.
-        # 태그 연결 테이블을 직접 JOIN하면 한 행사에 여러 태그가 맞을 때
-        # 목록과 total_count가 중복된다. EXISTS로 연결 여부만 확인한다.
+        # 태그 테이블을 JOIN하면 여러 태그가 맞을 때 행사가 중복되어 total_count가
+        # 부풀기 때문에 EXISTS(any)로 확인한다. q의 태그 검색도 같은 이유다.
         conditions.append(Event.tags.any(Tag.name.ilike(tag_keyword, escape="\\")))
 
-    # 페이지네이션 전 전체 건수를 세어 프론트가 페이지 수를 계산하게 한다.
+    # 페이지 적용 전 전체 건수.
     total_count = db.session.scalar(
         select(func.count(Event.id)).where(*conditions)
     )
     if query["sort"] == "popular":
-        # 현재는 events의 누적 조회수를 기준으로 정렬한다.
+        # 일별 집계가 아닌 events.view_count(누적) 기준이다.
         order_by = (Event.view_count.desc(), Event.id.desc())
     elif query["sort"] == "dateAsc":
         order_by = (Event.start_date.asc(), Event.id.asc())
@@ -160,7 +162,6 @@ def list_events(query: dict) -> dict:
         .limit(size)
     )
     events = db.session.scalars(statement).all()
-    # 검색 결과가 없거나 요청 페이지가 범위를 넘으면 events는 빈 목록이다(total_count는 그대로).
     return {
         "total_count": total_count,
         "page": page,
@@ -169,23 +170,31 @@ def list_events(query: dict) -> dict:
     }
 
 def get_event(event_id: int, today: date | None = None, request_method: str = "GET") -> Event:
-    # HEAD는 존재 여부와 헤더만 확인하는 요청이므로 조회수에 포함하지 않는다.
-    # 날짜는 잠금 대기 전에 정해 자정에 대기 시간이 길어져도 요청 날짜로 기록한다.
+    """행사 한 건을 조회하고, GET이면 조회수를 1 올린다.
+
+    Args:
+        event_id: 행사 ID.
+        today: 조회수를 기록할 날짜. 생략하면 KST 오늘이다.
+        request_method: HEAD 요청은 조회수에 포함하지 않는다.
+
+    Raises:
+        BusinessException: 행사가 없으면 EVENT_NOT_FOUND.
+    """
+    # 날짜는 잠금 대기 전에 정해 자정을 넘겨 대기해도 요청 시점의 날짜로 기록한다.
     record_view = request_method == "GET"
     view_date = today or datetime.now(KST).date()
-    # 독립 세션의 트랜잭션으로 집계 두 개를 묶는다. 예외가 나면 자동 롤백되며,
-    # 다른 서비스가 db.session에 남긴 변경을 여기서 함께 커밋하지 않는다.
+    # 누적·일별 집계를 별도 Session의 한 트랜잭션으로 묶는다. db.session에 남은
+    # 다른 변경이 함께 커밋되지 않고, 예외가 나면 둘 다 롤백된다.
     with Session(db.engine, expire_on_commit=False) as session, session.begin():
         statement = (
             select(Event)
             .options(selectinload(Event.category), selectinload(Event.sido))
-            # 지난 행사는 목록에서만 제외한다. 저장된 행사 ID로 직접 들어오면
-            # 상세 정보와 연결된 리뷰를 계속 볼 수 있도록 종료일로 막지 않는다.
+            # 종료일로 막지 않는다. 지난 행사도 ID로 상세와 리뷰를 볼 수 있다.
             .where(Event.id == event_id)
         )
         if record_view:
-            # MySQL에서는 행사 행 잠금으로 같은 행사 집계를 순차 처리한다.
-            # 관계는 별도 SELECT로 읽어 카테고리·지역 행까지 잠그지 않는다.
+            # 행사 행을 잠가 같은 행사의 일별 행 생성·증가를 직렬화한다. 관계를
+            # selectinload(별도 SELECT)로 읽어 카테고리·지역 행은 잠그지 않는다.
             statement = statement.with_for_update()
         event = session.scalar(statement)
         if event is None:
@@ -201,8 +210,7 @@ def get_event(event_id: int, today: date | None = None, request_method: str = "G
                 ))
             else:
                 daily_view.view_count += 1
-            # 조회수는 행사 내용 수정이 아니므로 updated_at의 자동 갱신을 막는다.
-            # 누적값은 DB에서 1을 더하고 일별 행과 같은 트랜잭션으로 확정한다.
+            # 조회수는 내용 수정이 아니므로 updated_at이 자동 갱신되지 않게 자기 값을 지정한다.
             session.execute(
                 update(Event)
                 .where(Event.id == event.id)
@@ -211,5 +219,5 @@ def get_event(event_id: int, today: date | None = None, request_method: str = "G
                     updated_at=Event.updated_at,
                 )
             )
-        # 응답에 필요한 관계를 미리 읽었으므로 세션 종료 후에도 직렬화할 수 있다.
+        # expire_on_commit=False와 관계 선로딩 덕분에 세션 종료 후에도 직렬화할 수 있다.
         return event

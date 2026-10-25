@@ -1,5 +1,7 @@
-# 행사 HTTP 엔드포인트. 요청 검증은 스키마, 검색과 DB 조회는 서비스가 담당한다.
-# 이 파일은 요청값 전달과 공통 JSON 응답 생성만 수행한다.
+"""행사 조회 API 라우트(`/api/events`).
+
+요청 검증은 schemas, 조회 로직은 service에 위임하고 여기서는 공통 응답만 만든다.
+"""
 
 from flask import Blueprint, jsonify, request
 
@@ -16,17 +18,19 @@ from app.domains.events.schemas import (
     SidoOptionSchema,
 )
 from app.domains.events import service as event_service
-# 행사 상세 응답에 같은 행사의 리뷰 목록과 평균 평점·리뷰 수를 포함하기 위해 사용한다.
 from app.domains.reviews import service as review_service
 
 
-# 부모 Blueprint가 /api를 붙이므로 여기서는 행사 경로 /events만 지정한다.
+# 부모 Blueprint(api_bp)가 /api를 붙인다.
 events_bp = Blueprint("events", __name__, url_prefix="/events")
 
 
 @events_bp.get("/categories")
 def list_categories():
-    # 입력값 없는 선택지 조회. 잘못 붙인 쿼리는 스키마에서 거부한다.
+    """카테고리 선택지 목록을 반환한다.
+
+    GET /api/events/categories. 쿼리 파라미터는 받지 않는다. 성공 시 200.
+    """
     EmptyQuerySchema().load(request.args)
     categories = event_service.list_categories()
     data = CategoryOptionSchema(many=True).dump(categories)
@@ -35,7 +39,10 @@ def list_categories():
 
 @events_bp.get("/sidos")
 def list_sidos():
-    # 받은 code는 프론트에서 선택한 뒤 행사 목록 요청의 sido_code로 전달한다.
+    """시도 선택지 목록을 반환한다.
+
+    GET /api/events/sidos. 쿼리 파라미터는 받지 않는다. 성공 시 200.
+    """
     EmptyQuerySchema().load(request.args)
     sidos = event_service.list_sidos()
     data = SidoOptionSchema(many=True).dump(sidos)
@@ -44,9 +51,14 @@ def list_sidos():
 
 @events_bp.get("")
 def list_events():
-    # 한국 시간 기준 이미 끝난 행사는 제외한다. q 통합 검색과 title·venue·tag
-    # 세부 검색을 포함한 나머지 조건은 스키마에서 검증하고 서비스에서 적용한다.
-    # 모두 같은 GET /api/events 경로를 사용하며, 응답의 행사 카드 형식도 동일하다.
+    """종료되지 않은 행사 목록을 필터·검색·정렬·페이지로 조회한다.
+
+    GET /api/events. 쿼리: q, title, venue, tag, category_id, sido_code, is_free,
+    start_date, end_date, sort, page, size. 결과가 없어도 200과 빈 목록을 반환한다.
+
+    Raises:
+        COMMON_INVALID_INPUT: 쿼리 검증 실패(400).
+    """
     query = EventListQuerySchema().load(request.args)
     result = event_service.list_events(query)
     data = EventListResponseSchema().dump(result)
@@ -55,7 +67,14 @@ def list_events():
 
 @events_bp.get("/monthly-top")
 def monthly_top_events():
-    # 조회할 월과 카드 개수를 검증한다. 월 경계와 순위 계산은 서비스에서 맡는다.
+    """월간 조회수 상위 행사를 반환한다.
+
+    GET /api/events/monthly-top. 쿼리: month(YYYY-MM, 생략 시 이번 달), size.
+    조회 기록이 없어도 200과 빈 목록을 반환한다.
+
+    Raises:
+        COMMON_INVALID_INPUT: 쿼리 검증 실패(400).
+    """
     query = MonthlyTopQuerySchema().load(request.args)
     result = event_service.monthly_top(query)
     data = MonthlyTopResponseSchema().dump(result)
@@ -64,18 +83,21 @@ def monthly_top_events():
 
 @events_bp.get("/<int:event_id>")
 def get_event(event_id):
-    # 경로의 정수 ID로 행사를 조회하고 서비스에서 조회수를 기록한다.
-    # 행사 상세 화면은 행사 정보와 리뷰를 함께 보여준다. 같은 행사 ID의 리뷰와
-    # 평점 요약까지 이 요청에서 조회해 프론트가 리뷰 API를 별도로 호출하지 않게 한다.
+    """행사 상세와 리뷰 목록·평점 요약을 한 번에 반환하고 조회수를 기록한다.
+
+    GET /api/events/<event_id>. 쿼리 파라미터는 받지 않는다. 성공 시 200.
+
+    Raises:
+        COMMON_INVALID_INPUT: event_id 또는 쿼리 검증 실패(400).
+        EVENT_NOT_FOUND: 행사가 없음(404).
+    """
     EmptyQuerySchema().load(request.args)
     params = EventPathSchema().load({"event_id": event_id})
     event = event_service.get_event(params["event_id"], request_method=request.method)
-    # 행사 조회가 먼저 성공해야 없는 행사에 대한 리뷰 조회를 하지 않는다.
-    # 기존 리뷰 API와 같은 서비스 함수를 재사용해 리뷰 정렬과 평점 계산을 맞춘다.
+    # 행사 조회가 성공한 뒤에만 리뷰를 읽는다. 리뷰 API와 같은 서비스 함수를 써서
+    # 정렬과 평점 계산을 일치시킨다.
     reviews = review_service.get_reviews_by_event(event.id)
     rating = review_service.get_rating_info(event.id)
-    # 리뷰가 없으면 reviews는 빈 목록이고, 평점 서비스는 개수와 평균을 0으로 준다.
-    # 응답 스키마가 행사 필드를 최상위에 두고 리뷰 관련 필드를 추가한다.
     data = EventDetailResponseSchema().dump({
         "event": event,
         "reviews": reviews,
