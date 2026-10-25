@@ -1,5 +1,5 @@
 # app/core/errors 패키지의 유일한 예외 클래스.
-# 반드시 Exception을 상속해야 한다 — app/__init__.py의 @app.errorhandler(BusinessException)이
+# 반드시 Exception을 상속해야 한다 — app/core/errors/handlers.py의 @app.errorhandler(BusinessException)이
 # 이 클래스를 잡으려면 Exception의 서브클래스여야 하기 때문 (ErrorCode를 상속하면 안 됨).
 from app.core.errors.codes import ErrorCode
 

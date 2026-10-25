@@ -13,7 +13,7 @@ class CommonResponse:
     @staticmethod
     def error(error_code: ErrorCode, message: str | None = None, extra: dict | None = None) -> dict:
         """BusinessException을 JSON 바디로 변환할 때 사용.
-        app/__init__.py의 @app.errorhandler(BusinessException)에서 호출된다.
+        app/core/errors/handlers.py의 @app.errorhandler(BusinessException)에서 호출된다.
 
         message: BusinessException 생성 시 커스텀 메시지를 넘겼다면 그걸 우선 사용하고,
                  없으면 error_code의 기본 메시지를 사용한다.

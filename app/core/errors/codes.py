@@ -1,5 +1,3 @@
-from enum import Enum
-
 """
     작성규칙
     오류 명시 = (상태코드, 오류 메세지)
@@ -13,15 +11,30 @@ from enum import Enum
       ErrorCode가 들고 있어야 한다. 새 도메인(카카오, 유저 등)이 추가돼도 새 클래스를
       만들 필요 없이 이 enum에 멤버만 추가하면 된다.
 """
+
+from enum import Enum
+
+
 class ErrorCode(Enum):
     # --- COMMON ---
     # 도메인을 특정하기 애매한 일반적인 요청 값 오류(필수값 누락, 형식 오류 등)에 사용.
     COMMON_INVALID_INPUT = (400, "요청 값이 올바르지 않습니다.")
     # 연결 장애·풀 대기 초과·일시적 잠금 충돌을 하나의 DB 사용 불가 오류로 묶는다.
     COMMON_DB_UNAVAILABLE = (503, "데이터베이스를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+    # 존재하지 않는 경로(404)와 허용되지 않는 HTTP 메서드(405). 라우팅 단계의 HTTPException에 사용한다.
+    COMMON_NOT_FOUND = (404, "요청한 경로를 찾을 수 없습니다.")
+    COMMON_METHOD_NOT_ALLOWED = (405, "허용되지 않는 HTTP 메서드입니다.")
+    # 위 두 경우 외의 HTTPException 폴백. 실제 상태 코드와 설명은 핸들러가 예외에서 가져온다.
+    COMMON_HTTP_ERROR = (400, "요청을 처리할 수 없습니다.")
+
+    # BusinessException/HTTPException 어디에도 속하지 않는, 예상 못한 서버 내부 오류
+    # (코드 버그, DB/외부 API 미처리 예외 등)에 사용. app/core/errors/handlers.py의
+    # @app.errorhandler(Exception)에서 이 코드로 항상 동일한 500 응답을 내려준다.
+    # 실제 원인은 로그로만 남기고 클라이언트에는 구체적인 원인을 노출하지 않는다.
+    COMMON_INTERNAL_ERROR = (500, "알 수 없는 서버 오류")
 
     # --- EVENT ---
-    # 상세 ID가 없거나 목록·월간 인기 조회에 반환할 행사가 없을 때 사용한다.
+    # 상세 ID가 없거나 리뷰 조회 대상 행사가 없을 때 사용한다.
     EVENT_NOT_FOUND = (404, "행사를 찾을 수 없습니다.")
 
     # --- TOUR API ---
@@ -72,17 +85,6 @@ class ErrorCode(Enum):
     # 토큰은 유효하지만 해당 id의 유저가 DB에 없는 경우 (탈퇴 등).
     USER_NOT_FOUND = (404, "사용자를 찾을 수 없습니다.")
 
-    # --- INTERNAL_ERROR ---
-    # BusinessException/HTTPException 어디에도 속하지 않는, 예상 못한 서버 내부 오류
-    # (코드 버그, DB/외부 API 미처리 예외 등)에 사용. app/__init__.py의
-    # @app.errorhandler(Exception)에서 이 코드로 항상 동일한 500 응답을 내려준다.
-    # 실제 원인은 로그로만 남기고 클라이언트에는 구체적인 원인을 노출하지 않는다.
-    COMMON_INTERNAL_ERROR = (500, "알 수 없는 서버 오류")
-
-    def __init__(self, status_code: int, message: str):
-        self.status_code = status_code
-        self.message = message
-
     # --- REVIEW ---
     #
     # 리뷰 API에서 발생할 수 있는 예외 상황을 정의한다.
@@ -96,6 +98,10 @@ class ErrorCode(Enum):
     # 리뷰 작성자가 아닌 사용자가 해당 리뷰를 수정하거나 삭제하려는 경우.
     # 현재 사용자의 user_id와 리뷰의 user_id를 비교하여 권한을 확인한다.
     REVIEW_FORBIDDEN = (403, "리뷰를 수정하거나 삭제할 권한이 없습니다.")
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        self.message = message
 
     @property
     def code(self) -> str:
