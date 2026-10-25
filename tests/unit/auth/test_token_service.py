@@ -66,7 +66,6 @@ def test_rotate_integrity_error_on_commit(app_ctx, monkeypatch):
     assert called == []
 
 
-@pytest.mark.xfail(strict=True, reason="BUG(low): token_service.py rotate_refresh_token does not check payload type==refresh; relies solely on route decorator")
 def test_rotate_rejects_access_payload(app_ctx):
     """서비스 계층에서 access payload를 refresh로 넘기면 거부되어야 한다(방어적 검증)."""
     access = decode_token(token_service.issue_tokens(5)["access_token"])
@@ -82,7 +81,6 @@ def test_revoke_blocklists_both(app_ctx):
     assert _blocked(a["jti"]) and _blocked(r["jti"])
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: token_service.py:79 autoflush of pending access jti raises uncaught IntegrityError at the select (outside try) when access jti already blocklisted")
 def test_revoke_idempotent(app_ctx):
     """같은 토큰으로 두 번 로그아웃해도 예외 없이 행이 중복되지 않는다."""
     t = token_service.issue_tokens(3)
@@ -101,7 +99,6 @@ def test_revoke_with_already_rotated_refresh(app_ctx):
     assert _blocked(a["jti"]) and _blocked(r["jti"])
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: token_service.py:79 same autoflush IntegrityError escapes the try/except")
 def test_revoke_access_already_blocklisted_still_revokes_refresh(app_ctx):
     """access jti가 이미 폐기된 경쟁 상황에서도 refresh는 폐기되어야 한다."""
     t = token_service.issue_tokens(3)

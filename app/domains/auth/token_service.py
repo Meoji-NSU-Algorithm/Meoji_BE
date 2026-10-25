@@ -35,8 +35,13 @@ def rotate_refresh_token(refresh_payload: dict) -> dict[str, str]:
         refresh_payload: @jwt_required(refresh=True) 검증을 마친 refresh 토큰 payload.
 
     Raises:
-        BusinessException: 동시 요청으로 이미 폐기된 토큰이면 AUTH_TOKEN_REVOKED.
+        BusinessException: refresh 토큰이 아니면 AUTH_TOKEN_INVALID,
+            동시 요청으로 이미 폐기된 토큰이면 AUTH_TOKEN_REVOKED.
     """
+    # @jwt_required(refresh=True)가 막아 주지만, 서비스를 직접 호출해도 access 토큰으로 재발급되지 않게 한다.
+    if refresh_payload.get("type") != "refresh":
+        raise BusinessException(ErrorCode.AUTH_TOKEN_INVALID)
+
     # 블록리스트 확인은 동시 요청이 오면 둘 다 통과할 수 있다.
     # jti unique 제약 위반(IntegrityError)을 이미 사용된 토큰으로 처리해 중복 발급을 막는다.
     db.session.add(TokenBlocklist(jti=refresh_payload["jti"]))
@@ -71,17 +76,12 @@ def revoke_tokens(access_payload: dict, refresh_token: str) -> None:
     if refresh_payload.get("type") != "refresh" or refresh_payload["sub"] != access_payload["sub"]:
         raise BusinessException(ErrorCode.AUTH_TOKEN_INVALID)
 
-    db.session.add(TokenBlocklist(jti=access_payload["jti"]))
-
-    # refresh 토큰은 이미 폐기되었을 수 있다(예: /refresh에서 사용한 옛 토큰).
-    # jti가 unique라 중복 insert는 IntegrityError가 되므로 없을 때만 추가한다.
-    refresh_jti = refresh_payload["jti"]
-    if db.session.scalar(db.select(TokenBlocklist.id).filter_by(jti=refresh_jti)) is None:
-        db.session.add(TokenBlocklist(jti=refresh_jti))
-
-    # 둘 중 하나만 저장되지 않도록 한 트랜잭션으로 커밋한다.
-    # 동시 요청으로 이미 저장되어 IntegrityError가 나면 폐기된 상태이므로 성공으로 본다.
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
+    # 토큰마다 SAVEPOINT 안에서 저장한다. 이미 폐기된 jti(중복 로그아웃, 동시 요청)는 unique 제약에 걸리지만
+    # 그 토큰만 건너뛰고, 나머지 토큰은 계속 저장해 둘 다 폐기된 상태로 끝낸다.
+    for jti in (access_payload["jti"], refresh_payload["jti"]):
+        try:
+            with db.session.begin_nested():
+                db.session.add(TokenBlocklist(jti=jti))
+        except IntegrityError:
+            pass
+    db.session.commit()
