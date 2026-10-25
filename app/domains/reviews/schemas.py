@@ -69,18 +69,18 @@ from marshmallow import (
 def validate_rating(value):
     # 평점이 0.5 이상 5 이하인지 확인한다.
     if value < 0.5 or value > 5:
-        raise ValidationError()
+        raise ValidationError("평점은 0.5 단위로 0.5~5.0 사이여야 합니다.")
 
     # 평점이 0.5 단위인지 확인한다.
     if value * 2 != int(value * 2):
-        raise ValidationError()
+        raise ValidationError("평점은 0.5 단위로 0.5~5.0 사이여야 합니다.")
 
 
 # 리뷰 생성 요청에 필요한 필드와 검증 조건을 정의한다.
 class ReviewCreateSchema(Schema):
 
     # 리뷰가 작성될 행사 ID를 받는다.
-    event_id = fields.Integer(required=True)
+    event_id = fields.Integer(required=True, validate=validate.Range(min=1))
 
     # 0.5 ~ 5.0 범위의 평점을 받는다.
     rating = fields.Float(required=True, validate=validate_rating)
@@ -103,7 +103,7 @@ class ReviewUpdateSchema(Schema):
     def validate_update(self, data, **kwargs):
         # 수정할 데이터가 없으면 오류를 발생시킨다.
         if not data:
-            raise ValidationError()
+            raise ValidationError("수정할 값이 없습니다.")
 
 
 # Review 객체의 API 응답 형식을 정의한다.
