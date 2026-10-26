@@ -13,7 +13,7 @@ branch_labels = None
 depends_on = None
 
 # categories/sidos는 FK 기준값이므로 events를 저장하기 전에 반드시 채운다.
-# 태그 목록은 tour_sync.py의 TAG_KEYWORDS와 동일해야 소개글 매칭이 가능하다.
+# 태그 목록은 app/domains/tour/sync_service.py의 TAG_KEYWORDS와 동일해야 소개글 매칭이 가능하다.
 CATEGORIES = [("축제", 1), ("전시", 2), ("공연", 3), ("체험", 4), ("계절행사", 5)]
 SIDOS = [
     ("11", "서울특별시", "서울", 1),

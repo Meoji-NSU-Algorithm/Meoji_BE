@@ -17,17 +17,80 @@
    ```
 2. 의존성 설치
    ```bash
-   # 새로 의존성 설치할 때마다 requirements.txt 생성
-   pip freeze > requirements.txt
-
-   # 클론 후 의존성 받아올 때 
+   # 클론 후 의존성 받아올 때 (개발/테스트까지 하려면 requirements-dev.txt)
    pip install -r requirements.txt
+   pip install -r requirements-dev.txt
    ```
-3. 앱 실행
+   - 패키지를 새로 설치했다면 **운영에 필요한 것만** `requirements.txt`에 직접 추가합니다. 개발 가상환경에서 `pip freeze > requirements.txt`를 하면 pytest 같은 개발용 패키지까지 섞이므로 사용하지 않습니다. 테스트용 패키지는 `requirements-dev.txt`에 추가합니다.
+   - `cryptography`는 코드에서 직접 import하지 않지만, MySQL 8 기본 인증 방식(`caching_sha2_password`)으로 PyMySQL이 접속할 때 필요합니다.
+3. 환경변수(`.env`) 설정: `.env.example`을 복사해서 `.env`를 만들고 값을 채웁니다.
+
+   | 변수 | 필수 | 설명 |
+   |---|---|---|
+   | `JWT_SECRET_KEY` | 필수 | JWT 서명 키. 32자 이상을 권장합니다(짧으면 경고만 합니다). |
+   | `KAKAO_CLIENT_ID` | 필수 | 카카오 REST API 키 |
+   | `KAKAO_REDIRECT_URI` | 필수 | 카카오 로그인 후 인가 코드를 받는 주소(카카오 디벨로퍼스에 등록한 값과 같아야 합니다) |
+   | `SQLALCHEMY_DATABASE_URI` | 필수 | MySQL 접속 주소 |
+   | `KAKAO_CLIENT_SECRET` | 선택 | 카카오 보안 설정을 켰을 때만 필요합니다 |
+   | `TOURAPI_KEY` | 수집 시 필요 | 공공데이터포털 TourAPI 키. 하루 호출 한도가 있을 수 있습니다 |
+   | `FLASK_DEBUG` | 선택 | 로컬 개발에서만 `1` |
+
+   - 필수 값이 비어 있거나 `NEED_TO_SET` 같은 예시 값이면 서버가 시작되지 않고, 빠진 항목을 알려 줍니다.
+   - DB는 직접 테이블을 만들지 말고 `flask db upgrade`로 만드세요. 이 마이그레이션이 카테고리·시도·태그 기준 데이터(시드)를 넣습니다. 시드가 없으면 행사 수집이 전부 실패합니다.
+   - 행사 수집(TourAPI)은 12시간마다 전국 행사를 다시 가져옵니다. 호출 한도가 있는 키는 사용량을 확인하세요.
+4. 앱 실행
    ```bash
    python wsgi.py
    ```
-4. 접속 주소: `http://127.0.0.1:5000` (`wsgi.py`에서 `app.run(debug=True)`로 실행하며, 호스트/포트를 별도 지정하지 않아 Flask 기본값을 사용합니다.)
+   - 디버그 모드(코드 수정 시 자동 재시작)는 기본으로 꺼져 있습니다. 로컬 개발에서는 `.env`에 `FLASK_DEBUG=1`을 추가하세요. 외부에서 접근 가능한 환경에서 디버그 모드를 켜면 위험하므로 배포 환경에서는 켜지 않습니다.
+   - 축제 데이터 자동 수집 스케줄러는 `python wsgi.py`로 실행할 때만 시작됩니다. `flask run`이나 gunicorn으로 띄우면 시작되지 않습니다.
+5. 접속 주소: `http://127.0.0.1:5000` (호스트/포트를 별도 지정하지 않아 Flask 기본값을 사용합니다.)
+
+## 1-1. 프로젝트 구조
+
+기능(도메인)별로 폴더를 나누고, 한 도메인의 라우트·서비스·모델·스키마를 같은 폴더에서 찾을 수 있습니다.
+
+```
+app/
+├─ __init__.py        create_app() 앱 팩토리
+├─ models.py          모든 도메인 모델을 import (Flask-Migrate가 모델을 인식하게 하는 용도)
+├─ core/              도메인 공통 코드
+│  ├─ config.py  extensions.py  response.py  jwt_callbacks.py
+│  ├─ api.py          /api 부모 Blueprint, 도메인 Blueprint 등록
+│  ├─ db.py  time.py  공용 TimestampMixin, KST 상수
+│  └─ errors/         ErrorCode, BusinessException, 전역 에러 핸들러
+└─ domains/
+   ├─ auth/     routes  service  kakao_client  token_service  models  schemas
+   ├─ users/    routes  service  models  schemas
+   ├─ events/   routes  service  models  schemas
+   ├─ reviews/  routes  service  models  schemas
+   └─ tour/     client  sync_service  state_service  scheduler  models
+tests/
+├─ conftest.py   전용 MySQL 테스트 DB 생성/삭제
+├─ unit/<도메인>/  도메인별 단위 테스트
+└─ integration/    HTTP 흐름 통합 테스트
+```
+
+- 새 도메인은 `app/domains/<도메인>/`에 만들고 `app/core/api.py`에 Blueprint를 등록합니다. 도메인 폴더의 `__init__.py`는 비워 둡니다. 도메인끼리 서로 import할 때 순환 import가 생기는 것을 막기 위해서입니다.
+- 새 모델을 만들면 `app/models.py`에도 import를 추가합니다.
+
+## 1-2. 테스트 실행
+
+```bash
+pytest
+```
+
+- `.env`의 `SQLALCHEMY_DATABASE_URI`와 같은 MySQL 서버에 `<DB이름>_test_<프로세스ID>` 이름의 임시 DB를 만들어 사용하고, 테스트가 끝나면 삭제합니다. 개발 DB는 건드리지 않습니다. 접속 계정에 `CREATE DATABASE` 권한이 필요합니다.
+- 외부 API(Kakao, TourAPI)는 호출하지 않고 mock으로 대체합니다.
+
+## 1-3. API 변경 사항 (구조 리팩토링 이후)
+
+- 행사 API 경로가 `/api/event/...`에서 `/api/events/...`로 바뀌었습니다.
+- 행사 응답 JSON 키가 camelCase에서 snake_case로 바뀌었습니다. (예: `startDate` -> `start_date`, `totalCount` -> `total_count`)
+- 행사 목록과 월간 TOP은 결과가 없어도 404 대신 `200`과 빈 목록을 반환합니다.
+- `GET /api/reviews/event/<event_id>`와 `GET /api/reviews/event/<event_id>/rating`은 기존처럼 로그인이 필요하고, 리뷰나 행사가 없으면 404가 아니라 200과 빈 목록(평점은 0점)을 반환합니다.
+- 행사 API의 로그인(JWT) 정책: 홈 화면용인 카테고리, 월간 TOP, **검색·필터 파라미터가 없는 목록**은 토큰 없이 호출할 수 있습니다. 검색·필터가 붙은 목록(`q`, `title`, `venue`, `tag`, `category_id`, `sido_code`, `is_free`, `start_date`, `end_date` 중 하나라도 값이 있는 경우), 시도 목록, 행사 상세는 토큰이 없으면 401입니다.
+- 404/405 같은 HTTP 에러의 `code`가 `COMMON_NOT_FOUND`, `COMMON_METHOD_NOT_ALLOWED` 형식으로 통일되었습니다.
 
 ## 2. Git 브랜치 전략
 
