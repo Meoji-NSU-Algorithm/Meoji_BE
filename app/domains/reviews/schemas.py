@@ -69,9 +69,18 @@ class ReviewUpdateSchema(Schema):
             raise ValidationError("수정할 값이 없습니다.")
 
 
+class ReviewAuthorSchema(Schema):
+    """리뷰 작성자의 공개 정보."""
+
+    id = fields.Integer()
+    nickname = fields.String()
+    profile_image = fields.String(allow_none=True)
+
+
 class ReviewResponseSchema(Schema):
     """Review 한 건의 응답 형식."""
 
+    author = fields.Nested(ReviewAuthorSchema)
     id = fields.Integer()
     user_id = fields.Integer()
     event_id = fields.Integer()

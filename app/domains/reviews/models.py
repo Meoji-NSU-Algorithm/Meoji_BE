@@ -20,6 +20,8 @@ class Review(TimestampMixin, db.Model):
 
     content = db.Column(db.Text, nullable=False)
 
+    author = db.relationship("User", lazy="joined")
+
     # API 검증을 우회한 입력에도 평점 범위와 0.5 단위를 보장하고,
     # 한 사용자가 한 행사에 리뷰를 하나만 쓰도록 DB에서 강제한다.
     __table_args__ = (
