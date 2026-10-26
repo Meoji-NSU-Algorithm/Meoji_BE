@@ -45,7 +45,6 @@ class Event(db.Model):
     latitude = db.Column(db.Numeric(10, 7))  # mapy: 위도
     longitude = db.Column(db.Numeric(10, 7))  # mapx: 경도
     image_url = db.Column(db.String(500))  # firstimage: 상세 대표 이미지
-    thumbnail_url = db.Column(db.String(500))  # firstimage2: 카드 썸네일
     fee_text = db.Column(db.Text)  # 요금 원문. 응답이 500자를 넘을 수 있어 Text
     price = db.Column(db.Integer)  # 원 단위 대표 금액(요금 문구 중 최소 금액)
     is_free = db.Column(db.Boolean)  # 요금을 판단할 수 없으면 NULL
