@@ -69,6 +69,14 @@ class ReviewUpdateSchema(Schema):
             raise ValidationError("수정할 값이 없습니다.")
 
 
+class ReviewEventResponseSchema(Schema):
+    """리뷰에 포함할 행사 정보."""
+    id = fields.Integer()
+    title = fields.String()
+    image_url = fields.String(allow_none=True)
+    end_date = fields.Date()
+
+
 class ReviewResponseSchema(Schema):
     """Review 한 건의 응답 형식."""
 
@@ -79,6 +87,7 @@ class ReviewResponseSchema(Schema):
     content = fields.String()
     created_at = UtcDateTime()
     updated_at = UtcDateTime()
+    event = fields.Nested(ReviewEventResponseSchema)
 
 
 class EventRatingResponseSchema(Schema):
