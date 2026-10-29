@@ -11,7 +11,8 @@ class Review(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    # 회원 탈퇴로 유저가 삭제되면 DB가 그 유저의 리뷰도 함께 삭제한다.
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
 
     event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False, index=True)
 
