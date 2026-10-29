@@ -12,6 +12,7 @@ from app.domains.reviews.schemas import (
     ReviewUpdateSchema,
     ReviewResponseSchema,
     EventRatingResponseSchema,
+    ReviewImageResponseSchema,
 )
 from app.domains.reviews import service as review_service
 
@@ -145,3 +146,28 @@ def delete_review(review_id):
             ReviewResponseSchema().dump(result)
         )
     ), 200
+
+
+
+@review_bp.post("/images")
+@jwt_required()
+def upload_image():
+    """리뷰에 붙일 이미지를 한 장 올리고 저장소 key와 url을 반환한다.
+
+    POST /api/reviews/images. multipart/form-data의 image 필드. 성공 시 201.
+    받은 key를 리뷰 작성(POST)·수정(PUT) 본문의 images에 넣어 연결한다.
+    원본은 저장하지 않고 webp로 변환한 결과만 저장한다(app/domains/reviews/images.py).
+
+    Raises:
+        COMMON_INVALID_INPUT: image 필드가 없음(400).
+        REVIEW_IMAGE_INVALID: 이미지가 아니거나 지원하지 않는 형식(400).
+        REVIEW_IMAGE_TOO_LARGE: 원본이 10MB 초과(413).
+        REVIEW_IMAGE_STORAGE_UNAVAILABLE: 저장소 설정 누락 또는 통신 실패(503).
+    """
+    key = review_service.upload_image(request.files.get("image"))
+
+    return jsonify(
+        CommonResponse.success(
+            ReviewImageResponseSchema().dump({"key": key})
+        )
+    ), 201

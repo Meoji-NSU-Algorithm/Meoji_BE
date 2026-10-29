@@ -14,7 +14,7 @@ def test_review_author_fields(client, login, make_event):
     created = client.post("/api/reviews", headers=author_headers, json={"event_id": eid, "rating": 4.5, "content": "후기"})
     assert created.status_code == 201
     assert created.json["data"]["author"] == expected_author
-    assert "images" not in created.json["data"]
+    assert created.json["data"]["images"] == []
     for path, headers in [(f"/api/reviews/event/{eid}", viewer_headers), ("/api/reviews/my", author_headers)]:
         response = client.get(path, headers=headers)
         assert response.status_code == 200
