@@ -23,6 +23,11 @@ class Config:
     # 한 글자도 달라서는 안 된다. 다르면 카카오가 KOE006을 반환하고 서버는 401 KAKAO_TOKEN_REQUEST_FAILED로 응답한다.
     KAKAO_REDIRECT_URI = os.environ.get("KAKAO_REDIRECT_URI")
 
+    # 카카오 앱의 Admin 키. 회원 탈퇴 시 카카오 연결 끊기에 쓴다.
+    # 모든 사용자를 다룰 수 있는 키이므로 서버에만 두고 프론트에 노출하지 않는다.
+    # 값이 없으면 연결 끊기를 건너뛴다(선택 설정이라 REQUIRED_CONFIG_KEYS에 넣지 않는다).
+    KAKAO_ADMIN_KEY = os.environ.get("KAKAO_ADMIN_KEY")
+
     # --- JWT / 외부 API / DB ---
 
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")

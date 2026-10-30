@@ -1,4 +1,6 @@
-"""유저 조회/생성을 담당하는 서비스. JWT와 카카오 통신은 모르고 user 테이블만 다룬다."""
+"""유저 조회/생성/삭제와 약관 동의를 담당하는 서비스. JWT와 카카오 통신은 모르고 user 테이블만 다룬다."""
+from datetime import datetime, timezone
+
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import BusinessException, ErrorCode
@@ -65,3 +67,48 @@ def get_user(user_id: int) -> User:
     if user is None:
         raise BusinessException(ErrorCode.USER_NOT_FOUND)
     return user
+
+
+def save_consent(user_id: int, data: dict) -> User:
+    """약관 동의를 저장한다.
+
+    필수 약관은 처음 동의한 시각을 유지하고, 다시 동의해도 덮어쓰지 않는다.
+    마케팅 수신은 값이 바뀔 때만 갱신하며, 철회하면 동의 시각을 비운다.
+
+    Args:
+        data: ConsentRequestSchema로 검증한 {"terms", "privacy", "marketing"}.
+
+    Raises:
+        BusinessException: 유저가 없으면 USER_NOT_FOUND.
+    """
+    user = get_user(user_id)
+    now = datetime.now(timezone.utc)
+
+    if user.terms_agreed_at is None:
+        user.terms_agreed_at = now
+        user.privacy_agreed_at = now
+
+    if data["marketing"] != user.marketing_agreed:
+        user.marketing_agreed = data["marketing"]
+        user.marketing_agreed_at = now if data["marketing"] else None
+
+    db.session.commit()
+    return user
+
+
+def delete_user(user_id: int) -> int:
+    """유저를 삭제하고 카카오 회원번호를 돌려준다. 리뷰는 FK의 ON DELETE CASCADE로 DB가 함께 삭제한다.
+
+    commit하지 않는다. 호출자(auth.service.withdraw)가 토큰 폐기와 함께 한 번에 확정한다.
+
+    Returns:
+        삭제한 유저의 kakao_id. 호출자가 카카오 연결 끊기에 쓴다.
+
+    Raises:
+        BusinessException: 유저가 없으면 USER_NOT_FOUND.
+    """
+    user = get_user(user_id)
+    # commit 이후에는 삭제된 객체의 속성을 읽을 수 없어 미리 꺼내 둔다.
+    kakao_id = user.kakao_id
+    db.session.delete(user)
+    return kakao_id

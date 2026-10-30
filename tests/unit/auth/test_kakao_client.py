@@ -229,3 +229,54 @@ def test_user_info_profile_not_dict_does_not_crash(app_ctx, monkeypatch):
     monkeypatch.setattr(kakao_client.requests, "get", MagicMock(return_value=_resp(json_body=body)))
     with pytest.raises(BusinessException):
         kakao_client.get_kakao_user_info("KT")
+
+
+# ---------- unlink_kakao_user ----------
+
+def test_unlink_skipped_without_admin_key(app_ctx, monkeypatch):
+    """KAKAO_ADMIN_KEY가 없으면 카카오를 호출하지 않는다."""
+    monkeypatch.setitem(app_ctx.config, "KAKAO_ADMIN_KEY", None)
+    post = MagicMock()
+    monkeypatch.setattr(kakao_client.requests, "post", post)
+    kakao_client.unlink_kakao_user(123)
+    post.assert_not_called()
+
+
+def test_unlink_skipped_with_empty_admin_key(app_ctx, monkeypatch):
+    """빈 문자열 키도 미설정으로 본다."""
+    monkeypatch.setitem(app_ctx.config, "KAKAO_ADMIN_KEY", "")
+    post = MagicMock()
+    monkeypatch.setattr(kakao_client.requests, "post", post)
+    kakao_client.unlink_kakao_user(123)
+    post.assert_not_called()
+
+
+def test_unlink_request_params(app_ctx, monkeypatch):
+    """URL, Authorization 헤더, form data, timeout이 올바르게 전달된다."""
+    monkeypatch.setitem(app_ctx.config, "KAKAO_ADMIN_KEY", "admin-key")
+    post = MagicMock(return_value=_resp(json_body={"id": 123}))
+    monkeypatch.setattr(kakao_client.requests, "post", post)
+    kakao_client.unlink_kakao_user(123)
+    post.assert_called_once()
+    args, kwargs = post.call_args
+    assert args[0] == kakao_client.KAKAO_UNLINK_URL == "https://kapi.kakao.com/v1/user/unlink"
+    assert kwargs["headers"] == {"Authorization": "KakaoAK admin-key"}
+    assert kwargs["data"] == {"target_id_type": "user_id", "target_id": 123}
+    assert kwargs["timeout"] == kakao_client.TIMEOUT
+
+
+@pytest.mark.parametrize("exc", [requests.Timeout(), requests.ConnectionError(), requests.RequestException()])
+def test_unlink_swallows_request_exception(app_ctx, monkeypatch, exc):
+    """네트워크 예외는 삼키고 반환한다."""
+    monkeypatch.setitem(app_ctx.config, "KAKAO_ADMIN_KEY", "admin-key")
+    monkeypatch.setattr(kakao_client.requests, "post", MagicMock(side_effect=exc))
+    assert kakao_client.unlink_kakao_user(123) is None
+
+
+def test_unlink_swallows_http_error(app_ctx, monkeypatch):
+    """4xx 응답(raise_for_status)도 예외 없이 끝난다."""
+    monkeypatch.setitem(app_ctx.config, "KAKAO_ADMIN_KEY", "admin-key")
+    resp = _resp(status=401, json_body={"msg": "bad key"})
+    monkeypatch.setattr(kakao_client.requests, "post", MagicMock(return_value=resp))
+    assert kakao_client.unlink_kakao_user(123) is None
+    resp.raise_for_status.assert_called_once()
