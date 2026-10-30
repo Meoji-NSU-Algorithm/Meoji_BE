@@ -11,6 +11,7 @@ EXPECTED_ROUTES = {
     ("GET", "/api/reviews/my"): "api.reviews.list_my_reviews",
     ("PUT", "/api/reviews/<int:review_id>"): "api.reviews.update_review",
     ("DELETE", "/api/reviews/<int:review_id>"): "api.reviews.delete_review",
+    ("POST", "/api/reviews/images"): "api.reviews.upload_image",
     ("GET", "/api/events/categories"): "api.events.list_categories",
     ("GET", "/api/events/sidos"): "api.events.list_sidos",
     ("GET", "/api/events"): "api.events.list_events",

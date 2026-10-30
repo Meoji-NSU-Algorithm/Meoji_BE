@@ -29,7 +29,6 @@ TEXT_FIELDS = {
     "addr1": "address",
     "addr2": "address_detail",
     "firstimage": "image_url",
-    "firstimage2": "thumbnail_url",
     "usetimefestival": "fee_text",
     "sponsor1": "organizer",
     "tel": "contact_phone",

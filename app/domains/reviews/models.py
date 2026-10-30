@@ -20,6 +20,13 @@ class Review(TimestampMixin, db.Model):
 
     content = db.Column(db.Text, nullable=False)
 
+    # 저장소 키 목록(["reviews/<uuid>.webp", ...]). URL은 저장소를 옮겨도 바뀌지 않도록 응답 시점에 만든다.
+    # 리뷰와 항상 함께 조회하고 장수가 적어 별도 테이블 대신 JSON 컬럼에 둔다.
+    # 이미지 기능 이전 리뷰는 NULL이며 응답에서는 빈 목록으로 내려간다.
+    images = db.Column(db.JSON, nullable=True)
+
+    author = db.relationship("User", lazy="joined")
+
     # API 검증을 우회한 입력에도 평점 범위와 0.5 단위를 보장하고,
     # 한 사용자가 한 행사에 리뷰를 하나만 쓰도록 DB에서 강제한다.
     __table_args__ = (

@@ -103,7 +103,7 @@ def test_response_dump_shape_and_types():
         updated_at = datetime(2026, 1, 2, 12, 0, 0)
 
     out = ReviewResponseSchema().dump(Obj())
-    assert set(out) == {"id", "user_id", "event_id", "rating", "content", "created_at", "updated_at"}
+    assert set(out) == {"id", "user_id", "event_id", "rating", "content", "created_at", "updated_at", "images"}
     assert out["rating"] == 4.5 and isinstance(out["rating"], float)
     assert out["created_at"] == "2026-01-01T12:00:00+00:00"
 

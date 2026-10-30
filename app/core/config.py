@@ -39,6 +39,18 @@ class Config:
     # 실행 중 실패한 요청을 자동 재시도하지는 않는다.
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
 
+    # --- 리뷰 이미지 저장소 (app/domains/reviews/images.py에서 사용) ---
+
+    # S3 호환 저장소 주소. 자체 서버(Garage 등)는 http://<IP>:3900, AWS S3는 비워 둔다.
+    # 저장소를 옮길 때는 이 값들만 바꾸고 코드와 DB는 그대로 둔다.
+    S3_ENDPOINT = os.environ.get("S3_ENDPOINT")
+    S3_REGION = os.environ.get("S3_REGION")
+    S3_BUCKET = os.environ.get("S3_BUCKET")
+    S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY")
+    S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY")
+    # 이미지 공개 주소의 앞부분. 비워 두면 1시간짜리 presigned URL을 만든다.
+    S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL")
+
 
 # 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.
 REQUIRED_CONFIG_KEYS = (
