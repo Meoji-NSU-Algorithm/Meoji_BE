@@ -90,6 +90,12 @@ class ErrorCode(Enum):
     REVIEW_FORBIDDEN = (403, "리뷰를 수정하거나 삭제할 권한이 없습니다.")
     # 같은 사용자가 같은 행사에 이미 리뷰를 작성한 경우
     REVIEW_ALREADY_EXISTS = (409, "이미 이 행사에 리뷰를 작성했습니다.")
+    # 업로드 파일이 이미지가 아니거나 지원하지 않는 형식(jpg/png/webp 외, 움직이는 이미지)인 경우
+    REVIEW_IMAGE_INVALID = (400, "지원하지 않는 이미지입니다. jpg, png, webp 파일을 올려주세요.")
+    # 변환 전 원본이 10MB를 넘는 경우 (app/domains/reviews/images.py의 MAX_UPLOAD_BYTES)
+    REVIEW_IMAGE_TOO_LARGE = (413, "이미지는 한 장에 10MB까지 올릴 수 있습니다.")
+    # S3_* 설정 누락이나 저장소 통신 실패. TOUR_API_REQUEST_FAILED처럼 원인은 로그에만 남긴다.
+    REVIEW_IMAGE_STORAGE_UNAVAILABLE = (503, "이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

@@ -1,6 +1,6 @@
 """카카오 서버와의 통신을 담당하는 클라이언트.
 
-인가 코드를 카카오 access_token으로 교환하고 사용자 정보를 조회한다. DB와 서비스 JWT는 다루지 않는다.
+인가 코드를 카카오 access_token으로 교환하고 사용자 정보를 조회하고, 회원 탈퇴 시 카카오 연결을 끊는다. DB와 서비스 JWT는 다루지 않는다.
 
 토큰 교환 실패는 원인에 따라 나눈다. 사용자가 다시 로그인하면 해결되는 인가 코드 문제만 401,
 우리 서버의 카카오 설정 오류나 카카오 장애처럼 사용자가 해결할 수 없는 문제는 502로 응답한다.
@@ -13,6 +13,7 @@ from app.core.errors import BusinessException, ErrorCode
 # 인증 서버(kauth)와 API 서버(kapi)의 도메인이 다르다.
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_INFO_URL = "https://kapi.kakao.com/v2/user/me"
+KAKAO_UNLINK_URL = "https://kapi.kakao.com/v1/user/unlink"
 
 # 카카오가 응답하지 않을 때 워커가 무한정 대기하지 않도록 하는 최대 대기 시간(초).
 # 초과하면 requests.Timeout이 발생하고 KAKAO_API_UNAVAILABLE(502)로 변환된다.
@@ -159,3 +160,26 @@ def get_kakao_user_info(kakao_access_token: str) -> dict:
     # 프로필 사진은 선택 동의 항목이라 없을 수 있다.
     result["profile_image"] = profile.get("profile_image_url")
     return result
+
+
+def unlink_kakao_user(kakao_id: int) -> None:
+    """카카오 계정과 서비스의 연결을 끊는다.
+
+    회원 탈퇴가 commit된 뒤에 호출하며, 실패해도 예외를 던지지 않고 경고 로그만 남긴다.
+    Admin 키는 서버에서만 쓰고 클라이언트에 노출하면 안 된다.
+    """
+    admin_key = current_app.config.get("KAKAO_ADMIN_KEY")
+    if not admin_key:
+        current_app.logger.warning("KAKAO_ADMIN_KEY 미설정으로 카카오 연결 끊기를 건너뜀: kakao_id=%s", kakao_id)
+        return
+
+    try:
+        resp = requests.post(
+            KAKAO_UNLINK_URL,
+            headers={"Authorization": f"KakaoAK {admin_key}"},
+            data={"target_id_type": "user_id", "target_id": kakao_id},
+            timeout=TIMEOUT,
+        )
+        resp.raise_for_status()
+    except requests.RequestException:
+        current_app.logger.warning("Kakao unlink failed: kakao_id=%s", kakao_id, exc_info=True)

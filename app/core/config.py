@@ -23,6 +23,11 @@ class Config:
     # 한 글자도 달라서는 안 된다. 다르면 카카오가 KOE006을 반환하고 서버는 401 KAKAO_TOKEN_REQUEST_FAILED로 응답한다.
     KAKAO_REDIRECT_URI = os.environ.get("KAKAO_REDIRECT_URI")
 
+    # 카카오 앱의 Admin 키. 회원 탈퇴 시 카카오 연결 끊기에 쓴다.
+    # 모든 사용자를 다룰 수 있는 키이므로 서버에만 두고 프론트에 노출하지 않는다.
+    # 값이 없으면 연결 끊기를 건너뛴다(선택 설정이라 REQUIRED_CONFIG_KEYS에 넣지 않는다).
+    KAKAO_ADMIN_KEY = os.environ.get("KAKAO_ADMIN_KEY")
+
     # --- JWT / 외부 API / DB ---
 
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
@@ -38,6 +43,18 @@ class Config:
     # 풀에서 꺼낸 연결이 살아 있는지 쿼리 전에 확인해, MySQL 재시작 후 남은 끊어진 연결을 교체한다.
     # 실행 중 실패한 요청을 자동 재시도하지는 않는다.
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
+
+    # --- 리뷰 이미지 저장소 (app/domains/reviews/images.py에서 사용) ---
+
+    # S3 호환 저장소 주소. 자체 서버(Garage 등)는 http://<IP>:3900, AWS S3는 비워 둔다.
+    # 저장소를 옮길 때는 이 값들만 바꾸고 코드와 DB는 그대로 둔다.
+    S3_ENDPOINT = os.environ.get("S3_ENDPOINT")
+    S3_REGION = os.environ.get("S3_REGION")
+    S3_BUCKET = os.environ.get("S3_BUCKET")
+    S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY")
+    S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY")
+    # 이미지 공개 주소의 앞부분. 비워 두면 1시간짜리 presigned URL을 만든다.
+    S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL")
 
 
 # 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.

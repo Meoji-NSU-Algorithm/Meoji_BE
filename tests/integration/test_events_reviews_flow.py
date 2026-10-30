@@ -139,7 +139,7 @@ def test_review_journey(client, refs, make_event, login):
     assert resp.status_code == 201
     r1 = resp.get_json()["data"]
     assert r1["user_id"] == u1 and r1["event_id"] == eid and r1["rating"] == 4.5
-    assert set(r1) == {"id", "user_id", "event_id", "rating", "content", "created_at", "updated_at"}
+    assert set(r1) == {"id", "user_id", "event_id", "rating", "content", "created_at", "updated_at", "author", "images"}
     r2 = post_review(client, h2, eid, 3.0, "둘째").get_json()["data"]
 
     detail = client.get(f"/api/events/{eid}", headers=h1).get_json()["data"]
