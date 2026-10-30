@@ -26,10 +26,11 @@ def test_every_revision_is_reachable_from_head():
     assert all_revisions == reachable
 
 
-def test_consent_migration_is_head_after_previous_head():
-    """약관 동의/CASCADE 마이그레이션이 head이고 직전 마이그레이션 위에 쌓인다."""
+def test_merge_migration_joins_image_and_consent_branches():
+    """merge 마이그레이션이 head이고 리뷰 이미지/약관 동의 두 갈래를 합친다."""
     script = _script_directory()
-    assert script.get_current_head() == "c5e8a2f7b140"
+    assert script.get_current_head() == "e5460f15d1f5"
+    assert set(script.get_revision("e5460f15d1f5").down_revision) == {"d5b81f3a6c27", "c5e8a2f7b140"}
     assert script.get_revision("c5e8a2f7b140").down_revision == "a7c3e1d94b52"
 
 
