@@ -1,0 +1,215 @@
+{
+  "info": {
+    "name": "Merge BE - Bookmarks",
+    "description": "북마크 API의 인증, 입력 검증, 멱등 추가, 목록 조회 및 해제를 검증합니다. collection variables의 baseUrl, accessToken, eventId를 설정한 뒤 순서대로 실행하세요.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:5000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "eventId", "value": "814" }
+  ],
+  "item": [
+    {
+      "name": "Bookmark lifecycle",
+      "item": [
+        {
+          "name": "Add bookmark (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"eventId\": {{eventId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('returns HTTP 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('returns a successful bookmarked state', () => { pm.expect(body.success).to.eql(true); pm.expect(body.data.eventId).to.eql(Number(pm.collectionVariables.get('eventId'))); pm.expect(body.data.isBookmarked).to.eql(true); });"
+            ] }
+          }]
+        },
+        {
+          "name": "Add same bookmark again (200, idempotent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"eventId\": {{eventId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('duplicate add also returns HTTP 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('duplicate add has the same successful state', () => { pm.expect(body.success).to.eql(true); pm.expect(body.data.eventId).to.eql(Number(pm.collectionVariables.get('eventId'))); pm.expect(body.data.isBookmarked).to.eql(true); });"
+            ] }
+          }]
+        },
+        {
+          "name": "Accept legacy event_id key (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"event_id\": {{eventId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('legacy key returns HTTP 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('legacy key resolves to the requested event', () => { pm.expect(body.success).to.eql(true); pm.expect(body.data.eventId).to.eql(Number(pm.collectionVariables.get('eventId'))); pm.expect(body.data.isBookmarked).to.eql(true); });"
+            ] }
+          }]
+        },
+        {
+          "name": "List my bookmarks (200)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('returns HTTP 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('contains the bookmarked event once and uses a supported price type', () => { pm.expect(body.success).to.eql(true); const matches = body.data.events.filter((event) => event.id === Number(pm.collectionVariables.get('eventId'))); pm.expect(matches).to.have.lengthOf(1); pm.expect(['FREE', 'PAID', 'UNKNOWN']).to.include(matches[0].priceType); pm.expect(body.data.totalCount).to.eql(body.data.events.length); });"
+            ] }
+          }]
+        },
+        {
+          "name": "Reject fractional eventId (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"eventId\": 1.5\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('fractional ID returns HTTP 400', () => pm.response.to.have.status(400));",
+              "const body = pm.response.json();",
+              "pm.test('uses the common input error', () => { pm.expect(body.success).to.eql(false); pm.expect(body.code).to.eql('COMMON_INVALID_INPUT'); });"
+            ] }
+          }]
+        },
+        {
+          "name": "Reject both event ID keys (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"eventId\": {{eventId}},\n  \"event_id\": {{eventId}}\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('sending both key variants returns HTTP 400', () => pm.response.to.have.status(400));",
+              "pm.test('uses the common input error', () => pm.expect(pm.response.json().code).to.eql('COMMON_INVALID_INPUT'));"
+            ] }
+          }]
+        },
+        {
+          "name": "Reject missing event ID (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('missing ID returns HTTP 400', () => pm.response.to.have.status(400));",
+              "pm.test('uses the common input error', () => pm.expect(pm.response.json().code).to.eql('COMMON_INVALID_INPUT'));"
+            ] }
+          }]
+        },
+        {
+          "name": "Reject missing access token (401)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('missing token returns HTTP 401', () => pm.response.to.have.status(401));",
+              "pm.test('uses the auth error response', () => { const body = pm.response.json(); pm.expect(body.success).to.eql(false); pm.expect(body.code).to.eql('AUTH_UNAUTHORIZED'); });"
+            ] }
+          }]
+        },
+        {
+          "name": "Delete bookmark (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/bookmarks/{{eventId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('delete returns HTTP 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('returns the unbookmarked state', () => { pm.expect(body.success).to.eql(true); pm.expect(body.data.eventId).to.eql(Number(pm.collectionVariables.get('eventId'))); pm.expect(body.data.isBookmarked).to.eql(false); });"
+            ] }
+          }]
+        },
+        {
+          "name": "Delete already removed bookmark (200, idempotent)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/bookmarks/{{eventId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('repeated delete returns HTTP 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('repeated delete reports the already removed state', () => { pm.expect(body.success).to.eql(true); pm.expect(body.data.eventId).to.eql(Number(pm.collectionVariables.get('eventId'))); pm.expect(body.data.isBookmarked).to.eql(false); });"
+            ] }
+          }]
+        },
+        {
+          "name": "List after delete (event is absent)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/bookmarks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('returns HTTP 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('deleted bookmark no longer appears', () => { pm.expect(body.success).to.eql(true); pm.expect(body.data.events.some((event) => event.id === Number(pm.collectionVariables.get('eventId')))).to.eql(false); });"
+            ] }
+          }]
+        }
+      ]
+    }
+  ]
+}

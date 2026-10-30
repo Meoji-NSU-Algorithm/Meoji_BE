@@ -16,16 +16,16 @@ bookmark_bp = Blueprint("bookmarks", __name__, url_prefix="/bookmarks")
 @bookmark_bp.route("", methods=["POST"])
 @jwt_required()
 def create():
-    """로그인한 사용자의 북마크를 추가한다 (새 항목은 201, 기존 항목은 200)."""
+    """로그인한 사용자의 북마크를 추가한다 (신규·중복 모두 200)."""
     user_id = int(get_jwt_identity())
     # 요청 본문을 스키마로 검증한 뒤 두 입력 표기 중 전달된 행사 ID를 사용한다.
     data = BookmarkCreateSchema().load(request.get_json(silent=True) or {})
-    event_id = data.get("eventId", data.get("event_id"))
-    _, created = add_bookmark(user_id, event_id)
+    event_id = data.get("event_id", data.get("legacy_event_id"))
+    add_bookmark(user_id, event_id)
     response_data = BookmarkResponseSchema().dump(
-        {"eventId": event_id, "isBookmarked": True}
+        {"event_id": event_id, "is_bookmarked": True}
     )
-    return jsonify(CommonResponse.success(response_data)), 201 if created else 200
+    return jsonify(CommonResponse.success(response_data)), 200
 
 
 @bookmark_bp.route("", methods=["GET"])
