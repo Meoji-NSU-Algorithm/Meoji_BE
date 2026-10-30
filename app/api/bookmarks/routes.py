@@ -28,7 +28,6 @@ def create():
     return jsonify(CommonResponse.success(response_data)), 200
 
 
-@bookmark_bp.route("", methods=["GET"])
 @bookmark_bp.route("/my", methods=["GET"])
 @jwt_required()
 def get_my():

@@ -19,7 +19,8 @@
 #   /api  +  /reviews + (없음)    →  POST /api/reviews        리뷰 작성
 #   /api  +  /event  + (없음)    →  GET  /api/event          진행 중·예정 행사 목록
 #   /api  +  /event  + /<id>     →  GET  /api/event/<id>     행사 상세
-#   /api  +  /bookmarks + (없음) →  GET/POST /api/bookmarks  내 북마크 목록 조회/추가
+#   /api  +  /bookmarks + (없음) →  POST /api/bookmarks     북마크 추가
+#   /api  +  /bookmarks + /my     →  GET  /api/bookmarks/my  내 북마크 목록 조회
 #   /api  +  /bookmarks + /<id>  →  DELETE /api/bookmarks/<id> 북마크 해제
 #   자식 Blueprint의 url_prefix에는 "/api"를 다시 쓰지 않는다.
 #   중복 지정하면 /api/api/auth/... 같은 주소가 된다.

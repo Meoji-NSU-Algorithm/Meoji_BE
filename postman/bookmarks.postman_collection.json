@@ -78,7 +78,7 @@
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
-            "url": "{{baseUrl}}/api/bookmarks"
+            "url": "{{baseUrl}}/api/bookmarks/my"
           },
           "event": [{
             "listen": "test",
@@ -151,7 +151,7 @@
           "name": "Reject missing access token (401)",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/bookmarks"
+            "url": "{{baseUrl}}/api/bookmarks/my"
           },
           "event": [{
             "listen": "test",
@@ -198,7 +198,7 @@
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
-            "url": "{{baseUrl}}/api/bookmarks"
+            "url": "{{baseUrl}}/api/bookmarks/my"
           },
           "event": [{
             "listen": "test",
