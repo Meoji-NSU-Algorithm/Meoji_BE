@@ -26,8 +26,6 @@ class Review(TimestampMixin, db.Model):
     # 이미지 기능 이전 리뷰는 NULL이며 응답에서는 빈 목록으로 내려간다.
     images = db.Column(db.JSON, nullable=True)
 
-    author = db.relationship("User", lazy="joined")
-
     # API 검증을 우회한 입력에도 평점 범위와 0.5 단위를 보장하고,
     # 한 사용자가 한 행사에 리뷰를 하나만 쓰도록 DB에서 강제한다.
     __table_args__ = (

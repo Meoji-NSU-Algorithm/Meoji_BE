@@ -164,10 +164,10 @@ def upload_image():
         REVIEW_IMAGE_TOO_LARGE: 원본이 10MB 초과(413).
         REVIEW_IMAGE_STORAGE_UNAVAILABLE: 저장소 설정 누락 또는 통신 실패(503).
     """
-    key = review_service.upload_image(request.files.get("image"))
+    result = review_service.upload_image(request.files.get("image"))
 
     return jsonify(
         CommonResponse.success(
-            ReviewImageResponseSchema().dump({"key": key})
+            ReviewImageResponseSchema().dump(result)
         )
     ), 201

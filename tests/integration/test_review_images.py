@@ -4,13 +4,13 @@ import io
 import pytest
 from PIL import Image
 
-from app.domains.reviews import images
+from app.domains.reviews import images, storage_client
 
 PUBLIC = "http://img.test/review-images"
 
 
 class FakeS3:
-    """images._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
+    """storage_client._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
 
     def __init__(self):
         self.objects = {}
@@ -27,7 +27,7 @@ class FakeS3:
 def s3(app, monkeypatch):
     # kakao_profiles 픽스처처럼 외부 통신 지점(모듈 속성)만 바꾼다.
     fake = FakeS3()
-    monkeypatch.setattr(images, "_client", lambda: fake)
+    monkeypatch.setattr(storage_client, "_client", lambda: fake)
     monkeypatch.setitem(app.config, "S3_BUCKET", "review-images")
     monkeypatch.setitem(app.config, "S3_PUBLIC_URL", PUBLIC)
     return fake
@@ -82,6 +82,7 @@ def test_upload_rejects_non_image_and_too_large(client, login, s3, monkeypatch):
 def test_upload_without_storage_config_is_503(client, login, app, monkeypatch):
     for key in ("S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
         monkeypatch.setitem(app.config, key, None)
+    monkeypatch.delitem(app.extensions, "review_storage_client", raising=False)
     headers, _, _ = login()
     response = _upload(client, headers)
     assert (response.status_code, response.json["code"]) == (503, "REVIEW_IMAGE_STORAGE_UNAVAILABLE")
@@ -134,3 +135,19 @@ def test_review_rejects_invalid_images(client, login, make_event, s3, bad):
                            json={"event_id": make_event().id, "rating": 5, "content": "x", "images": bad})
     assert response.status_code == 400
     assert response.json["code"] == "COMMON_INVALID_INPUT"
+
+
+def test_review_read_without_storage_config_returns_null_url(client, login, make_event, s3, app, monkeypatch):
+    """저장소 설정이 없어도 리뷰 조회는 200이고 url만 null이다."""
+    headers, _, _ = login()
+    eid = make_event().id
+    key = _upload(client, headers).json["data"]["key"]
+    client.post("/api/reviews", headers=headers, json={"event_id": eid, "rating": 4, "content": "후기", "images": [key]})
+    monkeypatch.setitem(app.config, "S3_PUBLIC_URL", None)
+    for name in ("S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
+        monkeypatch.setitem(app.config, name, None)
+
+    for path in (f"/api/events/{eid}", f"/api/reviews/event/{eid}", "/api/reviews/my"):
+        assert client.get(path, headers=headers).status_code == 200, path
+    detail = client.get(f"/api/events/{eid}", headers=headers).json["data"]
+    assert detail["reviews"][0]["images"] == [{"key": key, "url": None}]

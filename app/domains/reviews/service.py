@@ -1,12 +1,14 @@
 """리뷰 생성·조회·수정·삭제와 행사별 평점 집계를 담당한다.
 
 작성자 권한(본인 확인)을 여기서 검사하며, 실패는 BusinessException으로 올린다.
+리뷰를 돌려주는 함수는 응답용 작성자(review.author_info)와 이미지 URL(review.image_items)도 채워서 돌려준다.
 """
 
 from app.core.extensions import db
 from app.domains.events.models import Event
 from app.domains.reviews.models import Review
-from app.domains.reviews.images import delete_review_images, upload_review_image
+from app.domains.reviews import storage_client
+from app.domains.reviews.images import prepare_review_image
 from app.domains.users.models import User
 from app.core.errors import BusinessException, ErrorCode
 from sqlalchemy import func, select
@@ -65,24 +67,29 @@ def create_review(data: dict) -> Review:
 
         raise
 
-    return review
+    return _with_response_fields([review])[0]
 
 
-def upload_image(file_storage) -> str:
-    """리뷰에 붙일 이미지 한 장을 webp로 변환해 저장하고 저장소 key를 반환한다.
+def upload_image(file_storage) -> dict:
+    """리뷰에 붙일 이미지 한 장을 webp로 변환해 저장하고 {key, url}을 반환한다.
 
-    변환과 저장소 통신은 images 모듈이 맡고, 여기서는 요청에 파일이 있는지만 확인한다.
+    변환은 images 모듈, 저장소 통신은 storage_client가 맡고, 여기서는 요청에 파일이 있는지만 확인한다.
 
     Args:
         file_storage: request.files["image"]. 필드가 없으면 None.
 
     Raises:
-        BusinessException: 파일이 없으면 COMMON_INVALID_INPUT. 그 밖은 upload_review_image 참고.
+        BusinessException: 파일이 없으면 COMMON_INVALID_INPUT, 저장소 오류면 REVIEW_IMAGE_STORAGE_UNAVAILABLE.
+            그 밖은 prepare_review_image 참고.
     """
     if file_storage is None or not file_storage.filename:
         raise BusinessException(ErrorCode.COMMON_INVALID_INPUT, extra={"errors": {"image": ["이미지 파일이 필요합니다."]}})
 
-    return upload_review_image(file_storage)
+    # 변환을 먼저 끝내 이미지가 아닌 파일로는 저장소 설정 오류까지 가지 않게 한다.
+    key, data = prepare_review_image(file_storage)
+    storage_client.put_object(key, data, "image/webp")
+
+    return {"key": key, "url": storage_client.object_url(key)}
 
 
 def _is_duplicate_entry(error: IntegrityError) -> bool:
@@ -90,6 +97,24 @@ def _is_duplicate_entry(error: IntegrityError) -> bool:
     args = getattr(error.orig, "args", ())
 
     return bool(args) and args[0] == _MYSQL_DUP_ENTRY
+
+
+def _with_response_fields(reviews: list[Review]) -> list[Review]:
+    """응답용 작성자(review.author_info)와 [{key, url}](review.image_items)를 채운다.
+
+    스키마는 이 값을 그대로 직렬화한다. 작성자는 리뷰마다 조회하지 않고 한 번에 모아서 조회한다.
+    """
+    user_ids = {review.user_id for review in reviews}
+    authors = {}
+
+    if user_ids:
+        authors = {user.id: user for user in db.session.scalars(select(User).where(User.id.in_(user_ids)))}
+
+    for review in reviews:
+        review.author_info = authors.get(review.user_id)
+        review.image_items = [{"key": key, "url": storage_client.object_url(key)} for key in (review.images or [])]
+
+    return reviews
 
 
 def get_reviews_by_event(event_id: int) -> list[Review]:
@@ -100,7 +125,7 @@ def get_reviews_by_event(event_id: int) -> list[Review]:
         .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
     ).all()
 
-    return reviews
+    return _with_response_fields(reviews)
 
 
 def get_my_reviews(user_id: int) -> list[Review]:
@@ -112,7 +137,7 @@ def get_my_reviews(user_id: int) -> list[Review]:
         .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
     ).all()
 
-    return reviews
+    return _with_response_fields(reviews)
 
 
 def get_rating_info(event_id: int) -> dict:
@@ -163,9 +188,9 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
         review.images = data["images"]
 
     db.session.commit()
-    delete_review_images(removed_images)
+    storage_client.delete_objects(removed_images)
 
-    return review
+    return _with_response_fields([review])[0]
 
 
 def delete_review(review_id: int, user_id: int) -> Review:
@@ -182,9 +207,12 @@ def delete_review(review_id: int, user_id: int) -> Review:
     if review.user_id != user_id:
         raise BusinessException(ErrorCode.REVIEW_FORBIDDEN)
 
+    # 응답용 작성자·URL은 삭제 전에 만들어 둔다.
+    _with_response_fields([review])
+
     db.session.delete(review)
     db.session.commit()
     # update_review와 같이 커밋 성공 뒤에 저장소 파일을 지운다.
-    delete_review_images(review.images or [])
+    storage_client.delete_objects(review.images or [])
 
     return review

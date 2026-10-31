@@ -151,3 +151,12 @@ def test_whitespace_content_message_is_korean():
     with pytest.raises(ValidationError) as e:
         ReviewCreateSchema().load(valid(content="  "))
     assert e.value.messages["content"] == ["리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."]
+
+
+def test_response_images_are_dumped_from_image_items_without_storage_io():
+    """dump()는 서비스가 채운 image_items만 직렬화하고 저장소를 호출하지 않는다."""
+    class Obj:
+        images = ["reviews/a.webp"]
+        image_items = [{"key": "reviews/a.webp", "url": None}]
+
+    assert ReviewResponseSchema().dump(Obj())["images"] == [{"key": "reviews/a.webp", "url": None}]

@@ -10,7 +10,7 @@ from marshmallow import (
 )
 
 from app.core.fields import UtcDateTime
-from app.domains.reviews.images import KEY_PATTERN, MAX_REVIEW_IMAGES, image_url
+from app.domains.reviews.images import KEY_PATTERN, MAX_REVIEW_IMAGES
 
 CONTENT_MAX_LENGTH = 1000
 CONTENT_LENGTH_MESSAGE = "리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."
@@ -96,12 +96,24 @@ class ReviewAuthorSchema(Schema):
     profile_image = fields.String(allow_none=True)
 
 
+class ReviewImageResponseSchema(Schema):
+    """이미지 한 장의 응답({key, url}). 업로드 응답과 리뷰 응답의 images 항목이 같은 형식이다.
+
+    url은 서비스가 만들어 넘긴다(storage_client.object_url). 저장소 설정이 없으면 null이다.
+    """
+
+    key = fields.String()
+    url = fields.String(allow_none=True)
+
+
 class ReviewResponseSchema(Schema):
     """Review 한 건의 응답 형식."""
 
-    author = fields.Nested(ReviewAuthorSchema)
+    # 서비스가 채운 review.author_info(User)를 직렬화한다. images와 같이 dump()에서 DB를 조회하지 않는다.
+    author = fields.Nested(ReviewAuthorSchema, attribute="author_info")
     # [{key, url}]. 수정 요청에는 key를 그대로 돌려보내고, 화면에는 url을 쓴다.
-    images = fields.Method("get_images")
+    # 서비스가 채운 review.image_items를 직렬화만 한다. dump()에서 저장소를 호출하지 않는다.
+    images = fields.List(fields.Nested(ReviewImageResponseSchema), attribute="image_items", dump_default=list)
     id = fields.Integer()
     user_id = fields.Integer()
     event_id = fields.Integer()
@@ -109,17 +121,6 @@ class ReviewResponseSchema(Schema):
     content = fields.String()
     created_at = UtcDateTime()
     updated_at = UtcDateTime()
-
-    def get_images(self, review):
-        # 이미지 기능 이전 리뷰(NULL)와 images 속성이 없는 객체는 빈 목록으로 내려준다.
-        return [{"key": key, "url": image_url(key)} for key in (getattr(review, "images", None) or [])]
-
-
-class ReviewImageResponseSchema(Schema):
-    """업로드한 이미지 한 장의 응답({key, url}). ReviewResponseSchema.images 항목과 같은 형식이다."""
-
-    key = fields.String()
-    url = fields.Function(lambda obj: image_url(obj["key"]))
 
 
 class EventRatingResponseSchema(Schema):
