@@ -32,7 +32,7 @@ def create_review(data: dict) -> Review:
     """리뷰를 저장해 반환한다.
 
     Args:
-        data: user_id, event_id, rating, content.
+        data: user_id, event_id, rating, content, images(선택, 저장소 key 목록).
 
     Raises:
         BusinessException: 사용자가 없으면 USER_NOT_FOUND, 행사가 없으면 EVENT_NOT_FOUND,
@@ -282,7 +282,7 @@ def get_rating_info(event_id: int) -> dict:
 
 
 def update_review(review_id: int, user_id: int, data: dict) -> Review:
-    """본인 리뷰에서 data에 있는 rating/content만 수정한다.
+    """본인 리뷰에서 data에 있는 rating/content/images만 수정한다. images는 목록 전체를 교체한다.
 
     Raises:
         BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN,
@@ -322,6 +322,8 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
 def delete_review(review_id: int, user_id: int) -> Review:
     """본인 리뷰를 삭제하고 삭제된 리뷰를 반환한다.
 
+    첨부 이미지 중 다른 리뷰가 참조하지 않는 것만 저장소에서 지운다. 저장소 삭제가 실패해도 로그만 남긴다.
+
     Raises:
         BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN.
     """
@@ -333,12 +335,13 @@ def delete_review(review_id: int, user_id: int) -> Review:
     if review.user_id != user_id:
         raise BusinessException(ErrorCode.REVIEW_FORBIDDEN)
 
-    # 응답용 작성자·URL은 삭제 전에 만들어 둔다.
+    # users.service.delete_user처럼 삭제 전에 필요한 값을 미리 꺼내 둔다. 응답용 작성자·URL도 이때 만든다.
     _with_response_fields([review])
+    images = list(review.images or [])
 
     db.session.delete(review)
     db.session.commit()
     # update_review와 같이 커밋 성공 뒤에 저장소 파일을 지운다.
-    _delete_unreferenced_images(review.images or [])
+    _delete_unreferenced_images(images)
 
     return review

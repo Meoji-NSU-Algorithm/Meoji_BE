@@ -25,10 +25,11 @@ review_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
 def create_review():
     """리뷰를 작성한다.
 
-    POST /api/reviews. 본문: event_id, rating, content. 성공 시 201과 생성된 리뷰.
+    POST /api/reviews. 본문: event_id, rating, content, images(선택, 업로드 API가 준 key 목록).
+    성공 시 201과 생성된 리뷰.
 
     Raises:
-        COMMON_INVALID_INPUT: 본문 검증 실패(400).
+        COMMON_INVALID_INPUT: 본문 검증 실패(400). images의 형식·개수·중복 오류 포함.
         USER_NOT_FOUND / EVENT_NOT_FOUND: 작성자 또는 행사가 없음(404).
         REVIEW_IMAGE_ALREADY_ATTACHED: 다른 리뷰에 이미 붙은 이미지(409).
     """
@@ -105,9 +106,10 @@ def list_my_reviews():
 @review_bp.put("/<int:review_id>")
 @jwt_required()
 def update_review(review_id):
-    """본인이 쓴 리뷰의 평점 또는 내용을 수정한다.
+    """본인이 쓴 리뷰의 평점, 내용 또는 이미지를 수정한다.
 
-    PUT /api/reviews/<review_id>. 본문: rating, content 중 하나 이상. 성공 시 200.
+    PUT /api/reviews/<review_id>. 본문: rating, content, images 중 하나 이상. 성공 시 200.
+    images를 보내면 목록 전체를 교체하고, 빠진 이미지 중 다른 리뷰가 참조하지 않는 것은 저장소에서도 지운다.
 
     Raises:
         COMMON_INVALID_INPUT: 본문 검증 실패 또는 수정할 값 없음(400).
@@ -134,6 +136,7 @@ def delete_review(review_id):
     """본인이 쓴 리뷰를 삭제하고 삭제된 리뷰를 반환한다.
 
     DELETE /api/reviews/<review_id>. 성공 시 200.
+    첨부 이미지 중 다른 리뷰가 참조하지 않는 것은 저장소에서도 지운다.
 
     Raises:
         REVIEW_NOT_FOUND: 리뷰가 없음(404).
@@ -148,7 +151,6 @@ def delete_review(review_id):
             ReviewResponseSchema().dump(result)
         )
     ), 200
-
 
 
 @review_bp.post("/images")
