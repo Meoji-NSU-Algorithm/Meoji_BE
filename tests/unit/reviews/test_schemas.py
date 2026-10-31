@@ -160,3 +160,10 @@ def test_response_images_are_dumped_from_image_items_without_storage_io():
         image_items = [{"key": "reviews/a.webp", "url": None}]
 
     assert ReviewResponseSchema().dump(Obj())["images"] == [{"key": "reviews/a.webp", "url": None}]
+
+
+def test_images_rejects_duplicate_keys():
+    key = "reviews/" + "a" * 32 + ".webp"
+    with pytest.raises(ValidationError) as e:
+        ReviewUpdateSchema().load({"images": [key, key]})
+    assert "images" in e.value.messages

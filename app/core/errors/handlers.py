@@ -44,6 +44,8 @@ def register_error_handlers(app: Flask):
             body = CommonResponse.error(ErrorCode.COMMON_METHOD_NOT_ALLOWED)
         elif status_code == 404:
             body = CommonResponse.error(ErrorCode.COMMON_NOT_FOUND)
+        elif status_code == 413:
+            body = CommonResponse.error(ErrorCode.COMMON_PAYLOAD_TOO_LARGE)
         else:
             body = CommonResponse.error(ErrorCode.COMMON_HTTP_ERROR, e.description)
         response = jsonify(body)

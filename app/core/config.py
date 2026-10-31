@@ -56,6 +56,10 @@ class Config:
     # 이미지 공개 주소의 앞부분. 비워 두면 1시간짜리 presigned URL을 만든다.
     S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL")
 
+    # 요청 본문 최대 크기. 넘으면 Werkzeug가 본문을 다 받기 전에 413으로 거절한다.
+    # 이미지 한 장 한도(images.MAX_UPLOAD_BYTES, 10MB)에 multipart 머리글 여유 1MB를 더했다.
+    MAX_CONTENT_LENGTH = 11 * 1024 * 1024
+
 
 # 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.
 REQUIRED_CONFIG_KEYS = (

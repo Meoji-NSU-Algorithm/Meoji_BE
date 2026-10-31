@@ -3,9 +3,9 @@
 # app/__init__.py가 `from app import models`로 이 모듈을 불러온다.
 from app.domains.users.models import User
 from app.domains.auth.models import TokenBlocklist
-from app.domains.reviews.models import Review
+from app.domains.reviews.models import Review, ReviewImageUpload
 
 from app.domains.events.models import Category, Sido, Event, Tag, EventTag, EventDailyView
 from app.domains.tour.models import TourSyncState
 
-__all__ = ["User", "TokenBlocklist", "Review", "Category", "Sido", "Event", "Tag", "EventTag", "EventDailyView", "TourSyncState"]
+__all__ = ["User", "TokenBlocklist", "Review", "ReviewImageUpload", "Category", "Sido", "Event", "Tag", "EventTag", "EventDailyView", "TourSyncState"]

@@ -37,15 +37,25 @@ def validate_rating(value):
         raise ValidationError("평점은 0.5 단위로 0.5~5.0 사이여야 합니다.")
 
 
+def _validate_unique_images(keys):
+    """같은 key를 한 리뷰에 두 번 넣지 못하게 한다. validate_rating처럼 필드의 validate로 쓴다."""
+    if len(keys) != len(set(keys)):
+        raise ValidationError("같은 이미지를 두 번 첨부할 수 없습니다.")
+
+
 def _images_field():
     """images 필드를 만든다. POST /api/reviews/images가 돌려준 key만 받는다.
 
     _content_validator()처럼 작성·수정 스키마가 같은 규칙을 쓰도록 함수로 둔다.
+    다른 리뷰에 이미 붙은 key인지는 DB를 봐야 하므로 서비스에서 검사한다.
     """
     return fields.List(
         fields.String(validate=validate.Regexp(KEY_PATTERN, error="업로드 API가 발급한 이미지 key가 아닙니다.")),
         required=False,
-        validate=validate.Length(max=MAX_REVIEW_IMAGES, error=f"이미지는 최대 {MAX_REVIEW_IMAGES}장까지 첨부할 수 있습니다."),
+        validate=[
+            validate.Length(max=MAX_REVIEW_IMAGES, error=f"이미지는 최대 {MAX_REVIEW_IMAGES}장까지 첨부할 수 있습니다."),
+            _validate_unique_images,
+        ],
     )
 
 

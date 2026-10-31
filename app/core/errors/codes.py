@@ -18,6 +18,8 @@ class ErrorCode(Enum):
     # 라우팅 단계의 HTTPException: 존재하지 않는 경로(404)와 허용되지 않는 메서드(405)
     COMMON_NOT_FOUND = (404, "요청한 경로를 찾을 수 없습니다.")
     COMMON_METHOD_NOT_ALLOWED = (405, "허용되지 않는 HTTP 메서드입니다.")
+    # 요청 본문이 config.MAX_CONTENT_LENGTH를 넘어 Werkzeug가 본문을 다 받기 전에 거절한 경우
+    COMMON_PAYLOAD_TOO_LARGE = (413, "요청 본문이 너무 큽니다.")
     # 위 두 경우 외의 HTTPException 폴백. 실제 상태 코드와 설명은 핸들러가 예외에서 가져온다.
     COMMON_HTTP_ERROR = (400, "요청을 처리할 수 없습니다.")
 
@@ -94,6 +96,8 @@ class ErrorCode(Enum):
     REVIEW_IMAGE_INVALID = (400, "지원하지 않는 이미지입니다. jpg, png, webp 파일을 올려주세요.")
     # 변환 전 원본이 10MB를 넘는 경우 (app/domains/reviews/images.py의 MAX_UPLOAD_BYTES)
     REVIEW_IMAGE_TOO_LARGE = (413, "이미지는 한 장에 10MB까지 올릴 수 있습니다.")
+    # 다른 리뷰에 이미 붙은 이미지 key를 첨부하려는 경우. 남의 이미지를 수정·삭제로 지우는 것을 막는다.
+    REVIEW_IMAGE_ALREADY_ATTACHED = (409, "다른 리뷰에 첨부된 이미지는 사용할 수 없습니다.")
     # S3_* 설정 누락이나 저장소 통신 실패. TOUR_API_REQUEST_FAILED처럼 원인은 로그에만 남긴다.
     REVIEW_IMAGE_STORAGE_UNAVAILABLE = (503, "이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
 
