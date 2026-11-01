@@ -1,50 +1,56 @@
 
+"""길찾기 API의 요청 값 검증과 응답 데이터 직렬화를 담당한다."""
+
 from marshmallow import Schema, fields, validate
 
 from app.domains.events.schemas import QuerySchema
 
 
 class DirectionsQuerySchema(QuerySchema):
-    # 출발 위도
+    """길찾기 요청에 필요한 출발지 좌표와 이동 방식을 검증한다."""
+
     origin_lat = fields.Float(
         data_key="originLat",
         required=True,
         validate=validate.Range(min=-90, max=90),
     )
 
-    # 출발 경도
     origin_lng = fields.Float(
         data_key="originLng",
         required=True,
         validate=validate.Range(min=-180, max=180),
     )
 
-    # 출발 시각
-    departure_time = fields.String(
-        data_key="departureTime",
-        required=True,
-        validate=validate.Length(min=1),
+    mode = fields.String(
+        load_default="transit",
+        validate=validate.OneOf(("car", "transit")),
     )
 
-    # 이동 수단: 현재 자동차만 지원
-    mode = fields.String(
-        load_default="car",
-        validate=validate.OneOf(("car",)),
+
+class DirectionsStepSchema(Schema):
+    """개별 이동 단계의 응답 형식을 정의한다."""
+
+    step_number = fields.Integer(data_key="stepNumber")
+    type = fields.String()
+    instruction = fields.String()
+    duration_minutes = fields.Float(
+        data_key="durationMinutes",
+        allow_none=True,
     )
+    distance_meters = fields.Float(
+        data_key="distanceMeters",
+        allow_none=True,
+    )
+    detail = fields.String(allow_none=True)
+
 
 class DirectionsResponseSchema(Schema):
-    # 행사 ID
+    """길찾기 결과의 응답 형식을 정의한다."""
+
     event_id = fields.Integer(data_key="eventId")
-
-    # 이동 수단
     mode = fields.String()
-
-    # 예상 소요 시간(분)
-    duration_minutes = fields.Integer(data_key="durationMinutes")
-
-    # 이동 거리(미터)
-    distance_meters = fields.Integer(data_key="distanceMeters")
-
-    # 예상 도착 시각
+    departure_time = fields.String(data_key="departureTime")
+    duration_minutes = fields.Float(data_key="durationMinutes")
+    distance_meters = fields.Float(data_key="distanceMeters")
     arrival_time = fields.String(data_key="arrivalTime")
-
+    steps = fields.List(fields.Nested(DirectionsStepSchema))

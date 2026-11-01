@@ -35,6 +35,9 @@ class Config:
     # 한국관광공사 TourAPI 인증 키
     TOURAPI_KEY = os.environ.get("TOURAPI_KEY")
 
+    # ODSAY API 인증 키
+    ODSAY_API_KEY = os.getenv("ODSAY_API_KEY")
+
     # access token은 탈취 시 피해를 줄이기 위해 짧게, refresh token은 길게 둔다.
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=14)

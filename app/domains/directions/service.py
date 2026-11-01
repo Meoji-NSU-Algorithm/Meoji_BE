@@ -1,161 +1,341 @@
-from datetime import datetime, timedelta, timezone   # 프론트엔드에서 받은 출발 시각을 처리하고, 예상 도착 시각을 계산할 때 사용
 
-import requests                 # 카카오 길찾기 API에 HTTP 요청을 보낼 때 사용
-from flask import current_app   # Flask 앱에 등록된 설정값을 읽을 때 사용 .env에 저장한 카카오 REST API 키를 가져옴
+"""자동차 및 대중교통 길찾기 API 호출과 경로 데이터 가공을 담당한다."""
 
-from app.core.errors import BusinessException, ErrorCode # 행사가 존재하지 않거나 길찾기 API 호출에 실패했을 때, 프로젝트의 공통 예외 처리 규칙
-from app.core.extensions import db                       # 데이터베이스에서 행사 정보를 조회하고
-from app.domains.events.models import Event           # 해당 행사의 위도와 경도를 가져오는 데 사용
+import math
+from datetime import datetime, timedelta
 
-KST = timezone(timedelta(hours=9))
+import requests
+from flask import current_app
 
-class DirectionsService:
-    @staticmethod
-    def get_directions(event_id, query):
-        # DB에서 요청한 행사 조회
-        event = db.session.get(Event, event_id)
+from app.core.errors import BusinessException, ErrorCode
+from app.core.extensions import db
+from app.core.time import KST
+from app.domains.events.models import Event
 
-        # 행사가 존재하지 않으면 404 오류 처리
-        if event is None:
-            raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
 
-        # 행사에 목적지 좌표가 있는지 확인
-        if event.latitude is None or event.longitude is None:
-            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+def get_directions(event_id, query):
+    """행사와 출발지 정보를 바탕으로 이동 경로를 조회한다."""
 
-        # 출발 좌표 확인
-        origin_lat = query.get("origin_lat")
-        origin_lng = query.get("origin_lng")
+    event = db.session.get(Event, event_id)
 
-        if origin_lat is None or origin_lng is None:
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+    if event is None:
+        raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
 
-        # 이동 수단 확인 나중에 된다면 기본은 transit
-        mode = query.get("mode", "car")
+    if event.latitude is None or event.longitude is None:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
-        # 나중에 if mode not in ("transit", "car", "walk")
-        if mode != "car":
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+    try:
+        origin_lat = float(query["origin_lat"])
+        origin_lng = float(query["origin_lng"])
+    except (KeyError, TypeError, ValueError):
+        raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
 
-        # 좌표 범위 확인
-        try:
-            origin_lat = float(origin_lat)
-            origin_lng = float(origin_lng)
-        except (TypeError, ValueError):
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+    if (
+        not math.isfinite(origin_lat)
+        or not math.isfinite(origin_lng)
+        or not -90 <= origin_lat <= 90
+        or not -180 <= origin_lng <= 180
+    ):
+        raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
 
-        if not (-90 <= origin_lat <= 90):
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+    mode = query.get("mode", "car")
+    departure_time = datetime.now(KST)
 
-        if not (-180 <= origin_lng <= 180):
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+    if mode == "car":
+        return get_car_directions(
+            event, origin_lat, origin_lng, departure_time
+        )
 
-        # 출발 시각 확인
-        departure_time = query.get("departure_time")
+    if mode == "transit":
+        return get_transit_directions(
+            event, origin_lat, origin_lng, departure_time
+        )
 
-        if not departure_time:
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+    raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
 
-        try:
-            departure_time = datetime.fromisoformat(departure_time.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
 
-        # 시간대 정보가 없는 시각은 허용하지 않음
-        if departure_time.tzinfo is None:
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
 
-        # 출발 시각을 한국 시간으로 변환
-        departure_time = departure_time.astimezone(KST)
+def build_car_steps(route):
+    """카카오 길찾기 응답에서 자동차 이동 단계를 추출한다."""
 
-        # 자동차 길찾기 API 주소
-        url = "https://apis-navi.kakaomobility.com/v1/directions"
+    steps = []
 
-        # Flask 설정에서 REST API 키 가져오기
-        api_key = current_app.config.get("KAKAO_CLIENT_ID")
+    for section in route.get("sections", []):
+        for guide in section.get("guides", []):
+            guidance = guide.get("guidance")
 
-        # API 키가 없으면 요청할 수 없음
-        if not api_key:
-            raise BusinessException(ErrorCode.DIRECTIONS_API_KEY_MISSING)
+            if not guidance:
+                continue
 
-        # 카카오 API는 경도, 위도 순서로 좌표를 전달함
-        params = {
-            "origin": f"{origin_lng},{origin_lat}",
-            "destination": (
-                f"{float(event.longitude)},{float(event.latitude)}"
-            ),
-        }
+            distance = guide.get("distance")
+            duration = guide.get("duration")
 
-        # 인증 정보 설정
-        headers = {
-            "Authorization": f"KakaoAK {api_key}"
-        }
+            steps.append({
+                "step_number": len(steps) + 1,
+                "type": "DRIVE",
+                "instruction": guidance,
+                "duration_minutes": (
+                    round(duration / 60)
+                    if isinstance(duration, (int, float))
+                    else None
+                ),
+                "distance_meters": (
+                    round(distance)
+                    if isinstance(distance, (int, float))
+                    else None
+                ),
+                "detail": None,
+            })
 
-        # 자동차 경로 요청 및 오류 처리
-        try:
-            response = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=10,
-            )
+    return steps
 
-            # HTTP 4xx 또는 5xx 응답이면 예외 발생
-            response.raise_for_status()
 
-            # JSON 응답을 파이썬 딕셔너리로 변환
-            result = response.json()
 
-        except requests.Timeout:
-            # 카카오 서버가 제한 시간 내에 응답하지 않음
-            raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT)
+def get_car_directions(event, origin_lat, origin_lng, departure_time):
+    """카카오 자동차 길찾기 API를 호출하고 결과를 반환한다."""
 
-        except requests.HTTPError:
-            # 카카오 API가 HTTP 오류 상태 코드를 반환함
-            raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+    api_key = current_app.config.get("KAKAO_CLIENT_ID")
 
-        except requests.RequestException:
-            # 연결 실패 등 기타 요청 오류
-            raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+    if not api_key:
+        raise BusinessException(ErrorCode.DIRECTIONS_API_KEY_MISSING)
 
-        except ValueError:
-            # JSON 형식이 올바르지 않음
-            raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+    url = "https://apis-navi.kakaomobility.com/v1/directions"
 
-        # 경로 목록이 있는지 확인
-        routes = result.get("routes")
+    headers = {
+        "Authorization": f"KakaoAK {api_key}",
+    }
 
-        if not isinstance(routes, list) or not routes:
-            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+    params = {
+        "origin": f"{origin_lng},{origin_lat}",
+        "destination": f"{event.longitude},{event.latitude}",
+        "priority": "RECOMMEND",
+    }
 
-        # 첫 번째 경로의 요약 정보 확인
-        summary = routes[0].get("summary")
+    try:
+        response = requests.get(
+            url, headers=headers, params=params, timeout=10
+        )
+        response.raise_for_status()
+        result = response.json()
 
-        if not isinstance(summary, dict):
-            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+    except requests.Timeout:
+        raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT)
 
-        duration = summary.get("duration")
-        distance = summary.get("distance")
+    except (requests.RequestException, ValueError):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
-        # 소요 시간과 거리가 숫자인지 확인
-        if (
-            not isinstance(duration, (int, float))
-            or isinstance(duration, bool)
-            or not isinstance(distance, (int, float))
-            or isinstance(distance, bool)
-            or duration < 0
-            or distance < 0
-        ):
-            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+    routes = result.get("routes", [])
 
-        # 출발 시각에 이동 소요 시간을 더해 예상 도착 시각 계산
-        arrival_time = departure_time + timedelta(seconds=duration)
+    if not routes or routes[0].get("result_code") != 0:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
-        return {
-            "event_id": event.id,
-            "mode": "car",
-            "duration_minutes": round(duration / 60),
+    summary = routes[0].get("summary", {})
+    duration = summary.get("duration")
+    distance = summary.get("distance")
+
+    if duration is None or distance is None:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
+    arrival_time = departure_time + timedelta(seconds=duration)
+
+    return {
+        "event_id": event.id,
+        "mode": "car",
+        "departure_time": departure_time.isoformat(),
+        "duration_minutes": round(duration / 60),
+        "distance_meters": distance,
+        "arrival_time": arrival_time.isoformat(),
+        "steps": build_car_steps(routes[0]),
+    }
+
+
+def build_transit_steps(path):
+    """ODsay 대중교통 경로에서 도보·버스·지하철 단계를 추출한다."""
+
+    steps = []
+
+    for part in path.get("rps", []):
+        traffic_type = part.get("trafficType")
+
+        if traffic_type == 1:
+            step_type = "SUBWAY"
+        elif traffic_type == 2:
+            step_type = "BUS"
+        elif traffic_type == 3:
+            step_type = "WALK"
+        else:
+            step_type = "OTHER"
+
+        distance = part.get("distance")
+        duration = part.get("duration")
+        lanes = part.get("lane") or []
+
+        details = []
+        start_name = part.get("startName")
+        end_name = part.get("endName")
+
+        if step_type == "SUBWAY":
+            line_names = [
+                lane.get("name")
+                for lane in lanes
+                if isinstance(lane, dict) and lane.get("name")
+            ]
+
+            line_name = ", ".join(line_names) or "지하철"
+            instruction = f"{line_name} 탑승"
+
+            if end_name:
+                instruction += f", {end_name}역 하차"
+
+            if part.get("way"):
+                instruction += f" ({part['way']} 방면)"
+
+            if part.get("startExitNo"):
+                details.append(f"출발역 {part['startExitNo']}번 출구")
+
+            if part.get("endExitNo"):
+                details.append(f"도착역 {part['endExitNo']}번 출구")
+
+        elif step_type == "BUS":
+            bus_numbers = [
+                str(lane.get("busNo"))
+                for lane in lanes
+                if isinstance(lane, dict) and lane.get("busNo")
+            ]
+
+            bus_name = ", ".join(bus_numbers) or "버스"
+            instruction = f"{bus_name}번 버스 이용"
+
+            if start_name and end_name:
+                instruction += f": {start_name} 승차 → {end_name} 하차"
+            elif start_name:
+                instruction += f": {start_name} 승차"
+            elif end_name:
+                instruction += f": {end_name} 하차"
+
+            stations = (
+                part.get("passStopList") or {}
+            ).get("stations", [])
+
+            if stations:
+                details.append(f"경유 정류장 정보 {len(stations)}개")
+
+        elif step_type == "WALK":
+            instruction = "도보 이동"
+
+            walking_guides = [
+                guide.get("GUIDANCE")
+                for guide in (part.get("guides") or [])
+                if isinstance(guide, dict) and guide.get("GUIDANCE")
+            ]
+
+            if walking_guides:
+                instruction = " → ".join(walking_guides)
+
+        else:
+            instruction = "이동"
+
+        steps.append({
+            "step_number": len(steps) + 1,
+            "type": step_type,
+            "instruction": instruction,
+            "duration_minutes": duration,
             "distance_meters": distance,
-            "arrival_time": arrival_time.isoformat(),
-        }
+            "detail": ", ".join(details) if details else None,
+        })
+
+    return steps
+
+
+def get_transit_directions(event, origin_lat, origin_lng, departure_time):
+    """ODsay 대중교통 길찾기 API를 호출하고 결과를 반환한다."""
+
+    api_key = current_app.config.get("ODSAY_API_KEY")
+
+    if not api_key:
+        raise BusinessException(ErrorCode.DIRECTIONS_API_KEY_MISSING)
+
+    url = "https://api.odsay.com/v1/api/maasRP"
+
+    params = {
+        "SX": origin_lng,
+        "SY": origin_lat,
+        "EX": float(event.longitude),
+        "EY": float(event.latitude),
+        "SearchTime": departure_time.strftime("%Y%m%d%H%M"),
+        "SearchMethod": 2,
+        "apiKey": api_key,
+        "output": "json",
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+
+    except requests.Timeout:
+        raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT)
+
+    except (requests.RequestException, ValueError):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+
+    if not isinstance(result, dict) or result.get("error"):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+
+    result_data = result.get("result")
+    paths = result_data.get("paths") if isinstance(result_data, dict) else None
+
+    if not isinstance(paths, list) or not paths:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
+    transit_paths = [
+        path for path in paths
+        if isinstance(path, dict) and path.get("pathType") == 2
+    ]
+
+    if not transit_paths:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
+    path = transit_paths[0]
+
+    duration = path.get("totalTime")
+    distance = path.get("totalDistance")
+
+    if (
+        not isinstance(duration, (int, float))
+        or isinstance(duration, bool)
+        or not math.isfinite(duration)
+        or duration < 0
+        or not isinstance(distance, (int, float))
+        or isinstance(distance, bool)
+        or not math.isfinite(distance)
+        or distance < 0
+    ):
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
+    arrival_time = path.get("endDateTime")
+
+    if arrival_time:
+        try:
+            arrival_time = datetime.strptime(
+                arrival_time, "%Y%m%d%H%M"
+            ).replace(tzinfo=KST).isoformat()
+        except (TypeError, ValueError):
+            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+    else:
+        arrival_time = (
+            departure_time + timedelta(minutes=duration)
+        ).isoformat()
+
+    return {
+        "event_id": event.id,
+        "mode": "transit",
+        "departure_time": departure_time.isoformat(),
+        "duration_minutes": duration,
+        "distance_meters": distance,
+        "arrival_time": arrival_time,
+        "steps": build_transit_steps(path),
+    }
+
+
 

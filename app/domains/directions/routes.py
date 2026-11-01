@@ -1,24 +1,34 @@
 
+"""길찾기 API 요청을 받고 결과를 공통 응답 형식으로 반환한다."""
+
 from flask import Blueprint, jsonify, request
 
 from app.core.response import CommonResponse
-from app.domains.directions.schemas import (DirectionsQuerySchema, DirectionsResponseSchema,)
+from app.domains.directions import service as directions_service
+from app.domains.directions.schemas import (
+    DirectionsQuerySchema,
+    DirectionsResponseSchema,
+)
 from app.domains.events.schemas import EventPathSchema
-from app.domains.directions.service import DirectionsService
 
-directions_bp = Blueprint("directions", __name__, url_prefix="/directions",)
+directions_bp = Blueprint(
+    "directions",
+    __name__,
+    url_prefix="/directions",
+)
 
 
 @directions_bp.get("/<int:event_id>")
 def get_directions(event_id):
-    # URL의 행사 ID를 검증한다.
-    params = EventPathSchema().load({"event_id": event_id})
+    """행사 ID와 출발지 좌표를 받아 이동 경로를 조회한다."""
 
-    # 쿼리 파라미터를 검증하고 Python에서 사용할 형태로 변환한다.
+    params = EventPathSchema().load({"event_id": event_id})
     query = DirectionsQuerySchema().load(request.args)
 
-    # 서비스에서 행사 조회 및 길찾기를 처리한다.
-    data = DirectionsService.get_directions(params["event_id"], query,)
+    data = directions_service.get_directions(
+        params["event_id"], query
+    )
 
-    # 프로젝트의 공통 응답 형식으로 반환한다.
-    return jsonify(CommonResponse.success(DirectionsResponseSchema().dump(data))), 200
+    result = DirectionsResponseSchema().dump(data)
+
+    return jsonify(CommonResponse.success(result)), 200
