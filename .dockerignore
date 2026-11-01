@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.git
+.venv
+.idea
+.pytest_cache
+__pycache__
+*.pyc
+*.log
+.DS_Store
+tests
+README.md
