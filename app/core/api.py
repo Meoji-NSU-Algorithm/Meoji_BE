@@ -5,6 +5,7 @@
 """
 from flask import Blueprint
 
+from app.core.health import health_bp
 from app.domains.auth.routes import auth_bp
 from app.domains.users.routes import users_bp
 from app.domains.reviews.routes import review_bp
@@ -13,6 +14,7 @@ from app.domains.events.routes import events_bp
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 
+api_bp.register_blueprint(health_bp)
 api_bp.register_blueprint(auth_bp)
 api_bp.register_blueprint(users_bp)
 api_bp.register_blueprint(review_bp)

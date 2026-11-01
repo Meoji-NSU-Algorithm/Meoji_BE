@@ -1,4 +1,4 @@
-"""웹서버 프로세스 안에서 12시간 주기로 전국 축제 수집을 실행하는 스케줄러.
+"""12시간 주기로 전국 축제 수집을 실행하는 스케줄러.
 
 마지막 전체 성공 시각은 DB에 두어 재시작해도 주기가 유지된다. 실패 후 재시도 시각은
 프로세스 메모리에만 두므로, 재시작하면 DB의 성공 시각 기준으로 다시 판단한다.
@@ -18,10 +18,11 @@ SYNC_INTERVAL = timedelta(seconds=SYNC_INTERVAL_SECONDS)
 
 
 class FestivalSyncScheduler:
-    """수집 루프를 daemon 스레드로 실행한다. 프로세스당 한 번만 시작된다.
+    """수집 루프를 실행한다. start()는 daemon 스레드로, run_forever()는 현재 스레드에서 돌린다.
 
-    중복 시작 방지는 프로세스 내부 잠금뿐이다. 워커를 여러 개 띄우면 워커마다
-    실행되므로 별도의 공용 잠금이 필요하다.
+    중복 시작 방지는 프로세스 내부 잠금뿐이다. 웹 워커를 여러 개 띄우면 워커마다
+    실행되므로, 운영에서는 웹서버에서 시작하지 않고 run_scheduler.py 전용 프로세스를
+    하나만 띄운다.
     """
 
     def __init__(self):
@@ -43,6 +44,18 @@ class FestivalSyncScheduler:
             thread = Thread(target=self._run_loop, args=(app,), daemon=True, name="festival-sync")
             thread.start()
             self._started = True
+
+    def run_forever(self, app):
+        """수집 루프를 현재 스레드에서 실행하고, stop()이 호출되면 반환한다.
+
+        Args:
+            app: 앱 컨텍스트를 열 때 쓰는 Flask 앱.
+        """
+        self._run_loop(app)
+
+    def stop(self):
+        """수집 루프에 종료를 알린다. 진행 중인 수집은 끝난 뒤에 종료된다."""
+        self._stop.set()
 
     def _run_loop(self, app):
         """마지막 성공 시각을 매번 DB에서 읽어 수집하거나 다음 시각까지 대기한다.
@@ -109,5 +122,5 @@ class FestivalSyncScheduler:
                 app.logger.exception("%s: %s", error.code, error.message)
 
 
-# wsgi.py가 시작하는 프로세스 단위 인스턴스.
+# wsgi.py와 run_scheduler.py가 사용하는 프로세스 단위 인스턴스.
 festival_sync_scheduler = FestivalSyncScheduler()
