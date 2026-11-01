@@ -91,10 +91,12 @@ class ReviewUpdateSchema(Schema):
 
 class ReviewEventResponseSchema(Schema):
     """리뷰에 포함할 행사 정보."""
+
     id = fields.Integer()
     title = fields.String()
     image_url = fields.String(allow_none=True)
     end_date = fields.Date()
+
 
 class ReviewAuthorSchema(Schema):
     """리뷰 작성자의 공개 정보."""
