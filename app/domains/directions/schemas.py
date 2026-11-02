@@ -23,7 +23,7 @@ class DirectionsQuerySchema(QuerySchema):
 
     mode = fields.String(
         load_default="transit",
-        validate=validate.OneOf(("car", "transit")),
+        validate=validate.OneOf(("car", "transit", "walk")),
     )
 
 
@@ -41,7 +41,7 @@ class DirectionsStepSchema(Schema):
         data_key="distanceMeters",
         allow_none=True,
     )
-    detail = fields.String(allow_none=True)
+    detail = fields.Raw(allow_none=True)
 
 
 class DirectionsResponseSchema(Schema):

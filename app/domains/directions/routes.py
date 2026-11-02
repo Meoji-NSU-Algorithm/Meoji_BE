@@ -11,11 +11,7 @@ from app.domains.directions.schemas import (
 )
 from app.domains.events.schemas import EventPathSchema
 
-directions_bp = Blueprint(
-    "directions",
-    __name__,
-    url_prefix="/directions",
-)
+directions_bp = Blueprint("directions", __name__, url_prefix="/directions")
 
 
 @directions_bp.get("/<int:event_id>")
@@ -25,9 +21,7 @@ def get_directions(event_id):
     params = EventPathSchema().load({"event_id": event_id})
     query = DirectionsQuerySchema().load(request.args)
 
-    data = directions_service.get_directions(
-        params["event_id"], query
-    )
+    data = directions_service.get_directions(params["event_id"], query)
 
     result = DirectionsResponseSchema().dump(data)
 
