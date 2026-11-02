@@ -12,7 +12,7 @@
 from app.models.user import User                      # User 모델을 이 패키지 네임스페이스로 노출
 from app.models.token_blocklist import TokenBlocklist  # TokenBlocklist 모델을 이 패키지 네임스페이스로 노출
 from app.models.review import Review                   # Review 모델을 이 패키지 네임스페이스로 노출
-from app.models.bookmark import Bookmark               # bookmarks 테이블을 마이그레이션 메타데이터에 등록하고 외부에 노출
+from app.domains.bookmarks.models import Bookmark               # bookmarks 테이블을 마이그레이션 메타데이터에 등록하고 외부에 노출
 
 # 이 모듈에 모델 클래스를 import해야 Flask-Migrate가 테이블을 인식한다.
 # User/TokenBlocklist는 기존 인증 도메인이고, 행사 모델 여섯 개와

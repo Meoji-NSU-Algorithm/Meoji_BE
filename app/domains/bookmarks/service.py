@@ -2,7 +2,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.errors import BusinessException, ErrorCode
 from app.extensions import db
-from app.models.bookmark import Bookmark
+from app.domains.bookmarks.models import Bookmark
 from app.models.tour_content import Event
 from app.models.user import User
 

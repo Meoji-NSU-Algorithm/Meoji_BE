@@ -2,12 +2,12 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app.common_response import CommonResponse
-from app.schemas.bookmark import (
+from app.domains.bookmarks.schemas import (
     BookmarkCreateSchema,
     BookmarkListResponseSchema,
     BookmarkResponseSchema,
 )
-from app.services.bookmark_service import add_bookmark, get_my_bookmarks, remove_bookmark
+from app.domains.bookmarks.service import add_bookmark, get_my_bookmarks, remove_bookmark
 
 # 기존 API 라우트와 같은 방식으로 routes.py에서 Blueprint를 정의한다.
 bookmark_bp = Blueprint("bookmarks", __name__, url_prefix="/bookmarks")
