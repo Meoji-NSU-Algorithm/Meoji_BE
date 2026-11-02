@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from app.common_response import CommonResponse
+from app.core.response import CommonResponse
 from app.domains.bookmarks.schemas import (
     BookmarkCreateSchema,
     BookmarkListResponseSchema,

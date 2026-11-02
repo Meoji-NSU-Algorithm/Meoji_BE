@@ -1,10 +1,10 @@
 from sqlalchemy.exc import IntegrityError
 
-from app.errors import BusinessException, ErrorCode
-from app.extensions import db
+from app.core.errors import BusinessException, ErrorCode
+from app.core.extensions import db
 from app.domains.bookmarks.models import Bookmark
-from app.models.tour_content import Event
-from app.models.user import User
+from app.domains.events.models import Event
+from app.domains.users.models import User
 
 
 def _require_user(user_id):
@@ -50,7 +50,7 @@ def get_my_bookmarks(user_id):
         {
             "id": event.id,
             "title": event.title,
-            "image_url": event.thumbnail_url or event.image_url,
+            "image_url": event.image_url,
             "start_date": event.start_date,
             "end_date": event.end_date,
             "price_type": ("FREE" if event.is_free is True else "PAID" if event.is_free is False else "UNKNOWN"),

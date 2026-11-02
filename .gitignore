@@ -1,5 +1,10 @@
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 *.pyc
 .idea/
+.DS_Store
+*.log
+.pytest_cache/
