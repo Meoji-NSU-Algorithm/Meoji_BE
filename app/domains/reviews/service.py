@@ -92,16 +92,37 @@ def _is_duplicate_entry(error: IntegrityError) -> bool:
     return bool(args) and args[0] == _MYSQL_DUP_ENTRY
 
 
-def _build_my_review_responses(reviews: list[Review]) -> list[dict]:
-    """내 리뷰 목록에 각 리뷰가 작성된 행사 정보를 포함한다."""
+def get_reviews_by_event(event_id: int) -> list[Review]:
+    """행사의 리뷰를 최근 수정순으로 반환한다. 행사 존재 여부는 확인하지 않는다."""
+    reviews = db.session.scalars(
+        select(Review)
+        .where(Review.event_id == event_id)
+        .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
+    ).all()
+
+    return reviews
+
+
+def get_my_reviews(user_id: int) -> list[dict]:
+    """사용자가 쓴 리뷰를 행사 정보와 함께 최근 수정순으로 반환한다."""
+
+    reviews = db.session.scalars(
+        select(Review)
+        .where(Review.user_id == user_id)
+        .order_by(
+            Review.updated_at.desc(),
+            Review.created_at.desc(),
+            Review.id.desc()
+        )
+    ).all()
 
     if not reviews:
         return []
 
-    # 리뷰에 포함된 행사 ID를 중복 없이 모은다.
-    event_ids = {review.event_id for review in reviews}
+    # 리뷰에 포함된 행사 ID를 가져온다.
+    event_ids = [review.event_id for review in reviews]
 
-    # 행사 정보를 한 번에 조회한다.
+    # 리뷰에 해당하는 행사 정보를 조회한다.
     events = db.session.scalars(
         select(Event).where(Event.id.in_(event_ids))
     ).all()
@@ -136,29 +157,6 @@ def _build_my_review_responses(reviews: list[Review]) -> list[dict]:
         })
 
     return result
-
-
-def get_reviews_by_event(event_id: int) -> list[Review]:
-    """행사의 리뷰를 최근 수정순으로 반환한다. 행사 존재 여부는 확인하지 않는다."""
-    reviews = db.session.scalars(
-        select(Review)
-        .where(Review.event_id == event_id)
-        .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
-    ).all()
-
-    return reviews
-
-
-def get_my_reviews(user_id: int) -> list[dict]:
-    """사용자가 쓴 리뷰를 행사 정보와 함께 최근 수정순으로 반환한다."""
-
-    reviews = db.session.scalars(
-        select(Review)
-        .where(Review.user_id == user_id)
-        .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
-    ).all()
-
-    return _build_my_review_responses(reviews)
 
 
 def get_rating_info(event_id: int) -> dict:
