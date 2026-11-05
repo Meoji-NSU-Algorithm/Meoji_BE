@@ -219,6 +219,21 @@ def _delete_unreferenced_images(keys) -> None:
     storage_client.delete_objects(sorted(unreferenced))
 
 
+def get_image_keys_by_user(user_id: int) -> list[str]:
+    """사용자의 모든 리뷰에 붙은 이미지 key를 반환한다. 탈퇴로 리뷰가 지워지기 전에 읽어 둔다."""
+    keys = []
+
+    for images in db.session.scalars(select(Review.images).where(Review.user_id == user_id)):
+        keys.extend(images or [])
+
+    return keys
+
+
+def delete_images_after_commit(keys) -> None:
+    """다른 도메인에서 리뷰 삭제를 커밋한 뒤 이미지를 지울 때 쓴다. 실패해도 예외를 올리지 않는다."""
+    _delete_unreferenced_images(keys)
+
+
 def _with_response_fields(reviews: list[Review]) -> list[Review]:
     """응답용 작성자(review.author_info)와 [{key, url}](review.image_items)를 채운다.
 

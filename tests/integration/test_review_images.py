@@ -312,3 +312,43 @@ def test_upload_triggers_cleanup_of_old_uploads(client, login, s3):
     _age(old, 25)
     _upload(client, headers)
     assert old not in s3.objects
+
+
+# ---------- 회원 탈퇴 ----------
+def test_withdraw_deletes_review_images_except_shared(client, login, make_event, s3, monkeypatch):
+    """탈퇴하면 리뷰 이미지를 지우되, 다른 사용자의 리뷰가 참조하는 이미지와 남의 이미지는 남긴다."""
+    from app.domains.auth import kakao_client
+
+    monkeypatch.setattr(kakao_client, "unlink_kakao_user", lambda kakao_id: None)
+    a_headers, _, _ = login(kakao_id=8201)
+    b_headers, _, _ = login(kakao_id=8202)
+    eid = make_event().id
+    own, shared = (_upload(client, a_headers).json["data"]["key"] for _ in range(2))
+    other = _upload(client, b_headers).json["data"]["key"]
+    _review(client, a_headers, eid, [own, shared])
+    b_review = _review(client, b_headers, eid, [other]).json["data"]["id"]
+    # API로는 만들 수 없는 공유 상태를 DB에 직접 만든다
+    db.session.get(Review, b_review).images = [other, shared]
+    db.session.commit()
+
+    assert client.delete("/api/users/me", headers=a_headers).status_code == 200
+    assert own not in s3.objects
+    assert shared in s3.objects and other in s3.objects
+
+
+def test_withdraw_succeeds_when_storage_delete_fails(client, login, make_event, s3, monkeypatch):
+    """저장소 삭제가 실패해도 탈퇴는 성공한다."""
+    from botocore.exceptions import BotoCoreError
+    from app.domains.auth import kakao_client
+
+    monkeypatch.setattr(kakao_client, "unlink_kakao_user", lambda kakao_id: None)
+    headers, _, uid = login()
+    key = _upload(client, headers).json["data"]["key"]
+    _review(client, headers, make_event().id, [key])
+
+    def fail(**kwargs):
+        raise BotoCoreError()
+
+    monkeypatch.setattr(s3, "delete_objects", fail)
+    assert client.delete("/api/users/me", headers=headers).status_code == 200
+    assert client.get("/api/users/me", headers=headers).status_code == 401
