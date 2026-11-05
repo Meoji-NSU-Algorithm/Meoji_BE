@@ -88,12 +88,23 @@ class ReviewUpdateSchema(Schema):
             raise ValidationError("수정할 값이 없습니다.")
 
 
+
+class ReviewEventResponseSchema(Schema):
+    """리뷰에 포함할 행사 정보."""
+
+    id = fields.Integer()
+    title = fields.String()
+    image_url = fields.String(allow_none=True)
+    end_date = fields.Date()
+
+
 class ReviewAuthorSchema(Schema):
     """리뷰 작성자의 공개 정보."""
 
     id = fields.Integer()
     nickname = fields.String()
     profile_image = fields.String(allow_none=True)
+
 
 
 class ReviewResponseSchema(Schema):
@@ -109,6 +120,7 @@ class ReviewResponseSchema(Schema):
     content = fields.String()
     created_at = UtcDateTime()
     updated_at = UtcDateTime()
+    event = fields.Nested(ReviewEventResponseSchema)
 
     def get_images(self, review):
         # 이미지 기능 이전 리뷰(NULL)와 images 속성이 없는 객체는 빈 목록으로 내려준다.
