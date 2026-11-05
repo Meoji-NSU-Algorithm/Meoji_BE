@@ -1,4 +1,4 @@
-# CheonanOn_BE
+# Meoji_BE
 
 ## 1. 실행 방법
 
