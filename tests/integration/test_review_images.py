@@ -352,3 +352,19 @@ def test_withdraw_succeeds_when_storage_delete_fails(client, login, make_event, 
     monkeypatch.setattr(s3, "delete_objects", fail)
     assert client.delete("/api/users/me", headers=headers).status_code == 200
     assert client.get("/api/users/me", headers=headers).status_code == 401
+
+
+def test_my_reviews_include_event_author_and_images(client, login, make_event, s3):
+    """내 리뷰에는 행사 정보, 작성자, 이미지 {key, url}이 함께 나온다."""
+    headers, _, uid = login(nickname="나")
+    event = make_event(title="내 행사", image_url="https://example.com/e.jpg")
+    key = _upload(client, headers).json["data"]["key"]
+    _review(client, headers, event.id, [key])
+
+    review = client.get("/api/reviews/my", headers=headers).json["data"][0]
+    assert review["event"] == {
+        "id": event.id, "title": "내 행사", "image_url": "https://example.com/e.jpg",
+        "end_date": event.end_date.isoformat(),
+    }
+    assert review["author"]["id"] == uid
+    assert review["images"] == [{"key": key, "url": f"{PUBLIC}/{key}"}]

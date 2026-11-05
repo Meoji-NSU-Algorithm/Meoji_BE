@@ -88,7 +88,7 @@ def get_event_rating(event_id):
 @review_bp.get("/my")
 @jwt_required()
 def list_my_reviews():
-    """로그인한 사용자가 쓴 리뷰를 최근 수정순으로 반환한다.
+    """로그인한 사용자가 쓴 리뷰를 최근 수정순으로 행사 정보와 함께 반환한다.
 
     GET /api/reviews/my. 성공 시 200, 리뷰가 없으면 빈 목록.
     """

@@ -264,13 +264,40 @@ def get_reviews_by_event(event_id: int) -> list[Review]:
 
 
 def get_my_reviews(user_id: int) -> list[Review]:
-    """사용자가 쓴 리뷰를 최근 수정순으로 반환한다."""
-    # 시각이 같으면 ID 내림차순으로 순서를 고정한다.
+    """사용자가 쓴 리뷰를 행사 정보와 함께 최근 수정순으로 반환한다."""
+
     reviews = db.session.scalars(
         select(Review)
         .where(Review.user_id == user_id)
-        .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
+        .order_by(
+            Review.updated_at.desc(),
+            Review.created_at.desc(),
+            Review.id.desc()
+        )
     ).all()
+
+    if not reviews:
+        return []
+
+    # 리뷰에 포함된 행사 ID를 가져온다.
+    event_ids = [review.event_id for review in reviews]
+
+    # 리뷰에 해당하는 행사 정보를 조회한다.
+    events = db.session.scalars(
+        select(Event).where(Event.id.in_(event_ids))
+    ).all()
+
+    # 행사 ID로 행사 객체를 찾을 수 있도록 구성한다.
+    event_map = {event.id: event for event in events}
+
+    for review in reviews:
+        event = event_map.get(review.event_id)
+
+        if event is None:
+            raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+        # 스키마의 event 필드가 id, title, image_url, end_date만 골라 직렬화한다.
+        review.event = event
 
     return _with_response_fields(reviews)
 
