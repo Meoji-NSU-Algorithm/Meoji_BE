@@ -6,13 +6,13 @@ TourAPI 수집(tour.sync_service)과는 분리되어 DB에 저장된 데이터�
 from calendar import monthrange
 from datetime import date, datetime
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
 from app.core.time import KST
-from app.domains.events.models import Category, Event, EventDailyView, Sido, Tag
+from app.domains.events.models import Category, Event, EventDailyView, EventUserDailyView, Sido, Tag
 from app.domains.reviews import service as review_service
 
 
@@ -185,13 +185,19 @@ def list_events(query: dict) -> dict:
         "events": events,
     }
 
-def get_event(event_id: int, today: date | None = None, request_method: str = "GET") -> Event:
+def get_event(
+    event_id: int,
+    today: date | None = None,
+    request_method: str = "GET",
+    user_id: int | None = None,
+) -> Event:
     """행사 한 건을 조회하고, GET이면 조회수를 1 올린다.
 
     Args:
         event_id: 행사 ID.
         today: 조회수를 기록할 날짜. 생략하면 KST 오늘이다.
         request_method: HEAD 요청은 조회수에 포함하지 않는다.
+        user_id: 조회한 사용자. 주면 같은 사용자의 같은 날 반복 조회는 한 번만 센다.
 
     Raises:
         BusinessException: 행사가 없으면 EVENT_NOT_FOUND.
@@ -215,6 +221,20 @@ def get_event(event_id: int, today: date | None = None, request_method: str = "G
         event = session.scalar(statement)
         if event is None:
             raise BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+        if record_view and user_id is not None:
+            # 같은 사용자는 행사·날짜마다 한 번만 센다. 행사 행을 잠근 상태라 같은 사용자의 동시 요청도
+            # 여기서 직렬화되어 한 번만 기록된다. 지난 날짜 기록은 필요 없으므로 이 사용자 것만 함께 지운다.
+            session.execute(
+                delete(EventUserDailyView).where(
+                    EventUserDailyView.user_id == user_id,
+                    EventUserDailyView.view_date < view_date,
+                )
+            )
+            if session.get(EventUserDailyView, (user_id, event.id, view_date)) is not None:
+                record_view = False
+            else:
+                session.add(EventUserDailyView(user_id=user_id, event_id=event.id, view_date=view_date))
 
         if record_view:
             daily_view = session.get(EventDailyView, (event.id, view_date))
