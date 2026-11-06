@@ -180,6 +180,9 @@ def cleanup_unattached_uploads(now: datetime | None = None) -> int:
     try:
         # 행을 잠가, 정리하는 동안 같은 key를 리뷰에 붙이는 요청이 끼어들지 못하게 한다.
         # 그 요청은 정리가 끝난 뒤 기록이 없어 REVIEW_IMAGE_NOT_UPLOADED로 거부된다.
+        # 이 잠금은 아래 저장소(S3) 삭제 호출 동안에도 유지된다(storage_client 타임아웃 기준 최대 약 30초).
+        # 잠기는 행은 TTL이 지나 곧 지워질 업로드뿐이라 기다리는 요청도 어차피 거부될 요청이다.
+        # 잠금 없이 처리하면 S3 삭제와 리뷰 첨부가 경합해 깨진 사진이 남을 수 있어 유지한다. (#47)
         keys = list(db.session.scalars(
             select(ReviewImageUpload.key)
             .where(ReviewImageUpload.created_at < now - UNATTACHED_UPLOAD_TTL)

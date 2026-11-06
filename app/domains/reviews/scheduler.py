@@ -1,4 +1,7 @@
-"""웹서버 프로세스 안에서 1시간 주기로 리뷰에 붙지 않은 업로드 이미지를 정리하는 스케줄러.
+"""웹서버 프로세스 안에서 1시간 주기로 정리 작업을 실행하는 스케줄러.
+
+- 리뷰에 붙지 않은 업로드 이미지 삭제
+- 지난 날짜의 사용자별 행사 조회 기록(event_user_daily_views) 삭제
 
 정리를 업로드 요청 밖에서 돌려, 저장소가 느려도 사용자의 업로드 응답이 늦어지지 않게 한다.
 한 주기에 service._CLEANUP_BATCH개씩 최대 MAX_BATCHES_PER_RUN번 지우고, 남은 업로드는 다음 주기에 이어서 정리한다.
@@ -6,6 +9,8 @@
 
 from threading import Event, Lock, Thread
 
+from app.core.extensions import db
+from app.domains.events.service import cleanup_old_user_views
 from app.domains.reviews.service import cleanup_unattached_uploads
 
 
@@ -59,15 +64,23 @@ class UploadCleanupScheduler:
     def _run_loop(self, app):
         """정리를 한 번 실행하고 다음 주기까지 대기한다. 오류가 나도 루프는 종료되지 않는다."""
         while not self._stop.is_set():
-            try:
-                # 요청 밖 스레드라 앱 컨텍스트를 직접 열고, 대기 전에 닫아 DB 연결을 점유하지 않는다.
-                with app.app_context():
+            # 요청 밖 스레드라 앱 컨텍스트를 직접 열고, 대기 전에 닫아 DB 연결을 점유하지 않는다.
+            # 작업마다 try를 나눠 한쪽이 실패해도 다른 쪽은 실행한다. 예외가 스레드 밖으로 나가면
+            # 정리가 영구 중단되므로 모두 잡아 로그만 남긴다.
+            with app.app_context():
+                try:
                     deleted = run_cleanup_until_empty()
                     if deleted:
                         app.logger.info("미첨부 리뷰 이미지 정리: %d개 삭제", deleted)
-            except Exception:
-                # 예외가 스레드 밖으로 나가면 정리가 영구 중단되므로 모두 잡아 로그만 남긴다.
-                app.logger.exception("미첨부 리뷰 이미지 정리 스케줄 실패")
+                except Exception:
+                    app.logger.exception("미첨부 리뷰 이미지 정리 스케줄 실패")
+                try:
+                    removed = cleanup_old_user_views()
+                    if removed:
+                        app.logger.info("지난 행사 조회 기록 정리: %d건 삭제", removed)
+                except Exception:
+                    db.session.rollback()
+                    app.logger.exception("지난 행사 조회 기록 정리 실패")
             self._stop.wait(CLEANUP_INTERVAL_SECONDS)
 
 

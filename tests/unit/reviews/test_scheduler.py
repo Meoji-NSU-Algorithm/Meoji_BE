@@ -86,3 +86,33 @@ def test_loop_does_not_run_when_already_stopped(app_ctx):
         s._run_loop(app_ctx)
     run.assert_not_called()
     assert s._stop.waits == []
+
+
+# ---- 지난 조회 기록 정리 (#47) ----
+def test_loop_also_cleans_old_user_views(app_ctx):
+    s = make()
+    with patch.object(sched, "run_cleanup_until_empty", return_value=0), \
+            patch.object(sched, "cleanup_old_user_views", return_value=4) as views:
+        s._run_loop(app_ctx)
+    views.assert_called_once()
+
+
+def test_view_cleanup_runs_even_if_upload_cleanup_fails(app_ctx):
+    s = make()
+    with patch.object(sched, "run_cleanup_until_empty", side_effect=RuntimeError("s3")), \
+            patch.object(sched, "cleanup_old_user_views", return_value=0) as views, \
+            patch.object(app_ctx.logger, "exception") as log_exception:
+        s._run_loop(app_ctx)
+    views.assert_called_once()
+    log_exception.assert_called_once()
+    assert s._stop.waits == [CLEANUP_INTERVAL_SECONDS]
+
+
+def test_upload_cleanup_unaffected_when_view_cleanup_fails(app_ctx):
+    s = make(max_waits=2)
+    with patch.object(sched, "run_cleanup_until_empty", return_value=0) as run, \
+            patch.object(sched, "cleanup_old_user_views", side_effect=RuntimeError("db")), \
+            patch.object(app_ctx.logger, "exception") as log_exception:
+        s._run_loop(app_ctx)
+    assert run.call_count == 2 and log_exception.call_count == 2
+    assert s._stop.waits == [CLEANUP_INTERVAL_SECONDS] * 2

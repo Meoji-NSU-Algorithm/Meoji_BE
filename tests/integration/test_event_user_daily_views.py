@@ -68,3 +68,30 @@ def test_withdraw_removes_user_daily_view_rows(client, login, make_event, monkey
     db.session.remove()
     assert db.session.scalar(db.select(db.func.count()).select_from(EventUserDailyView)) == 0
     assert db.session.get(Event, event.id).view_count == 1
+
+
+def test_cleanup_old_user_views_keeps_today(app_ctx, login, client, make_event):
+    """다시 오지 않는 사용자의 지난 기록도 일괄 정리로 지워지고 오늘 기록은 남는다. (#47)"""
+    from datetime import date, timedelta
+
+    from sqlalchemy import select
+
+    from app.domains.events.service import cleanup_old_user_views
+
+    today = date(2026, 11, 6)
+    _, _, first = login(kakao_id=5101)
+    _, _, second = login(kakao_id=5102)
+    event, other = make_event(), make_event()
+    db.session.add_all([
+        EventUserDailyView(user_id=first, event_id=event.id, view_date=today - timedelta(days=30)),
+        EventUserDailyView(user_id=first, event_id=other.id, view_date=today - timedelta(days=1)),
+        EventUserDailyView(user_id=second, event_id=event.id, view_date=today - timedelta(days=1)),
+        EventUserDailyView(user_id=second, event_id=other.id, view_date=today),
+    ])
+    db.session.commit()
+
+    assert cleanup_old_user_views(today=today) == 3
+    db.session.remove()
+    rows = db.session.execute(select(EventUserDailyView.user_id, EventUserDailyView.view_date)).all()
+    assert rows == [(second, today)]
+    assert cleanup_old_user_views(today=today) == 0
