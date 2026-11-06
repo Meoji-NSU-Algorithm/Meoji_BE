@@ -9,9 +9,10 @@ from app.domains.bookmarks.models import Bookmark
 def test_add_duplicate_and_legacy_input(client, login, make_event):
     headers, _, user_id = login()
     event = make_event()
-    for body in ({"eventId": event.id}, {"eventId": event.id}, {"event_id": event.id}):
+    # 새로 만들면 201, 이미 있으면(camelCase·legacy 입력 모두) 200이다.
+    for body, status in (({"eventId": event.id}, 201), ({"eventId": event.id}, 200), ({"event_id": event.id}, 200)):
         response = client.post("/api/bookmarks", json=body, headers=headers)
-        assert response.status_code == 200
+        assert response.status_code == status
         assert response.get_json()["data"] == {"eventId": event.id, "isBookmarked": True}
     assert db.session.query(Bookmark).filter_by(user_id=user_id, event_id=event.id).count() == 1
 
@@ -21,7 +22,7 @@ def test_list_uses_current_event_image(client, login, make_event, is_free, price
     headers, _, _ = login()
     event = make_event(image_url="https://example.test/event.jpg", is_free=is_free)
     assert not hasattr(event, "thumbnail_url")
-    assert client.post("/api/bookmarks", json={"eventId": event.id}, headers=headers).status_code == 200
+    assert client.post("/api/bookmarks", json={"eventId": event.id}, headers=headers).status_code == 201
     response = client.get("/api/bookmarks/my", headers=headers)
     assert response.status_code == 200
     assert response.get_json()["data"] == {
