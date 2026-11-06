@@ -366,6 +366,28 @@ def get_rating_info(event_id: int) -> dict:
     }
 
 
+def get_rating_map(event_ids) -> dict[int, dict]:
+    """여러 행사의 평균 평점과 리뷰 개수를 쿼리 한 번으로 구한다. 목록 카드용이다.
+
+    계산 규칙은 get_rating_info와 같다(소수 첫째 자리 반올림). 리뷰가 없는 행사는 결과에 없다.
+    """
+    ids = list(event_ids)
+
+    if not ids:
+        return {}
+
+    rows = db.session.execute(
+        select(Review.event_id, func.avg(Review.rating), func.count(Review.id))
+        .where(Review.event_id.in_(ids))
+        .group_by(Review.event_id)
+    ).all()
+
+    return {
+        event_id: {"average_rating": round(float(average), 1), "review_count": count}
+        for event_id, average, count in rows
+    }
+
+
 def update_review(review_id: int, user_id: int, data: dict) -> Review:
     """본인 리뷰에서 data에 있는 rating/content/images만 수정한다. images는 목록 전체를 교체한다.
 

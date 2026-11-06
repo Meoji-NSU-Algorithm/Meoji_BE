@@ -13,6 +13,7 @@ from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
 from app.core.time import KST
 from app.domains.events.models import Category, Event, EventDailyView, Sido, Tag
+from app.domains.reviews import service as review_service
 
 
 def _contains_keyword(value: str | None) -> str | None:
@@ -23,6 +24,19 @@ def _contains_keyword(value: str | None) -> str | None:
     # 사용자가 입력한 %, _, \\가 LIKE 와일드카드로 해석되지 않도록 이스케이프한다.
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+def _attach_ratings(events) -> None:
+    """목록 카드에 쓸 평균 평점과 리뷰 개수를 행사 객체에 붙인다.
+
+    카드마다 조회하면 N+1이 되므로 review_service.get_rating_map으로 한 번에 구한다.
+    리뷰가 없는 행사는 0, 0이다.
+    """
+    ratings = review_service.get_rating_map(event.id for event in events)
+    for event in events:
+        rating = ratings.get(event.id, {"average_rating": 0, "review_count": 0})
+        event.average_rating = rating["average_rating"]
+        event.review_count = rating["review_count"]
 
 
 def list_categories() -> list[Category]:
@@ -85,6 +99,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
             .limit(query["size"] - len(rows))
         ).all()
         rows.extend((event, 0) for event in recommendations)
+    _attach_ratings([event for event, _ in rows])
     return {
         "month": f"{month.year:04d}-{month.month:02d}",
         "events": [
@@ -162,6 +177,7 @@ def list_events(query: dict) -> dict:
         .limit(size)
     )
     events = db.session.scalars(statement).all()
+    _attach_ratings(events)
     return {
         "total_count": total_count,
         "page": page,

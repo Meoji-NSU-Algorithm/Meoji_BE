@@ -144,6 +144,9 @@ class EventCardSchema(Schema):
     view_count = fields.Integer()
     price = fields.Integer(allow_none=True)
     is_free = fields.Boolean(allow_none=True)
+    # 목록·월간 인기 서비스가 events.service._attach_ratings로 붙인다. 붙이지 않은 객체는 응답에서 빠진다.
+    average_rating = fields.Float()
+    review_count = fields.Integer()
 
 
 class EventListResponseSchema(Schema):
