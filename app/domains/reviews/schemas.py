@@ -10,7 +10,7 @@ from marshmallow import (
 )
 
 from app.core.fields import UtcDateTime
-from app.domains.reviews.images import KEY_PATTERN, MAX_REVIEW_IMAGES, image_url
+from app.domains.reviews.images import KEY_PATTERN, MAX_REVIEW_IMAGES
 
 CONTENT_MAX_LENGTH = 1000
 CONTENT_LENGTH_MESSAGE = "리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."
@@ -37,15 +37,25 @@ def validate_rating(value):
         raise ValidationError("평점은 0.5 단위로 0.5~5.0 사이여야 합니다.")
 
 
+def _validate_unique_images(keys):
+    """같은 key를 한 리뷰에 두 번 넣지 못하게 한다. validate_rating처럼 필드의 validate로 쓴다."""
+    if len(keys) != len(set(keys)):
+        raise ValidationError("같은 이미지를 두 번 첨부할 수 없습니다.")
+
+
 def _images_field():
     """images 필드를 만든다. POST /api/reviews/images가 돌려준 key만 받는다.
 
     _content_validator()처럼 작성·수정 스키마가 같은 규칙을 쓰도록 함수로 둔다.
+    다른 리뷰에 이미 붙은 key인지는 DB를 봐야 하므로 서비스에서 검사한다.
     """
     return fields.List(
         fields.String(validate=validate.Regexp(KEY_PATTERN, error="업로드 API가 발급한 이미지 key가 아닙니다.")),
         required=False,
-        validate=validate.Length(max=MAX_REVIEW_IMAGES, error=f"이미지는 최대 {MAX_REVIEW_IMAGES}장까지 첨부할 수 있습니다."),
+        validate=[
+            validate.Length(max=MAX_REVIEW_IMAGES, error=f"이미지는 최대 {MAX_REVIEW_IMAGES}장까지 첨부할 수 있습니다."),
+            _validate_unique_images,
+        ],
     )
 
 
@@ -106,13 +116,24 @@ class ReviewAuthorSchema(Schema):
     profile_image = fields.String(allow_none=True)
 
 
+class ReviewImageResponseSchema(Schema):
+    """이미지 한 장의 응답({key, url}). 업로드 응답과 리뷰 응답의 images 항목이 같은 형식이다.
+
+    url은 서비스가 만들어 넘긴다(storage_client.object_url). 저장소 설정이 없으면 null이다.
+    """
+
+    key = fields.String()
+    url = fields.String(allow_none=True)
+
 
 class ReviewResponseSchema(Schema):
     """Review 한 건의 응답 형식."""
 
-    author = fields.Nested(ReviewAuthorSchema)
+    # 서비스가 채운 review.author_info(User)를 직렬화한다. images와 같이 dump()에서 DB를 조회하지 않는다.
+    author = fields.Nested(ReviewAuthorSchema, attribute="author_info")
     # [{key, url}]. 수정 요청에는 key를 그대로 돌려보내고, 화면에는 url을 쓴다.
-    images = fields.Method("get_images")
+    # 서비스가 채운 review.image_items를 직렬화만 한다. dump()에서 저장소를 호출하지 않는다.
+    images = fields.List(fields.Nested(ReviewImageResponseSchema), attribute="image_items", dump_default=list)
     id = fields.Integer()
     user_id = fields.Integer()
     event_id = fields.Integer()
@@ -121,17 +142,6 @@ class ReviewResponseSchema(Schema):
     created_at = UtcDateTime()
     updated_at = UtcDateTime()
     event = fields.Nested(ReviewEventResponseSchema)
-
-    def get_images(self, review):
-        # 이미지 기능 이전 리뷰(NULL)와 images 속성이 없는 객체는 빈 목록으로 내려준다.
-        return [{"key": key, "url": image_url(key)} for key in (getattr(review, "images", None) or [])]
-
-
-class ReviewImageResponseSchema(Schema):
-    """업로드한 이미지 한 장의 응답({key, url}). ReviewResponseSchema.images 항목과 같은 형식이다."""
-
-    key = fields.String()
-    url = fields.Function(lambda obj: image_url(obj["key"]))
 
 
 class EventRatingResponseSchema(Schema):
