@@ -166,7 +166,7 @@ def _event_ns(**kw):
         thumbnail_url=None, price=None, is_free=None, description=None, address=None,
         address_detail=None, play_time=None, fee_text=None, image_url=None, latitude=None,
         longitude=None, organizer=None, contact_phone=None, homepage_url=None,
-        is_permanent=False,
+        is_permanent=False, tags=[],
     )
     d.update(kw)
     return SimpleNamespace(**d)

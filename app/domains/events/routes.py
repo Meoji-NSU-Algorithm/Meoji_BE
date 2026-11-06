@@ -64,8 +64,10 @@ def list_events():
     """종료되지 않은 행사 목록을 필터·검색·정렬·페이지로 조회한다.
 
     GET /api/events. 쿼리: q, title, venue, tag, category_id, sido_code, is_free,
-    start_date, end_date, sort, page, size. 결과가 없어도 200과 빈 목록을 반환한다.
-    검색 파라미터(SEARCH_PARAMS)에 공백이 아닌 값이 하나라도 있으면 JWT가 필요하고, page/size/sort만 있으면 JWT 없이 호출할 수 있다.
+    start_date, end_date, sort, page, size, 지도용 has_coords와 min_lat·max_lat·min_lng·max_lng(네 값 함께).
+    결과가 없어도 200과 빈 목록을 반환한다.
+    검색 파라미터(SEARCH_PARAMS)에 공백이 아닌 값이 하나라도 있으면 JWT가 필요하다. page/size/sort와
+    지도용 파라미터만 있으면 JWT 없이 호출할 수 있다(비로그인 지도 화면).
 
     Raises:
         AUTH_UNAUTHORIZED 등: 검색인데 JWT가 없거나 올바르지 않음(401).

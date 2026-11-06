@@ -101,6 +101,12 @@ class EventListQuerySchema(QuerySchema):
         validate=validate.Range(min=1, max=2_147_483_647),
     )
     size = fields.Integer(load_default=20, validate=validate.Range(min=1, max=100))
+    # 지도용. has_coords=true면 좌표가 있는 행사만, 네 모서리 값을 주면 그 영역 안의 행사만 조회한다.
+    has_coords = fields.Boolean(load_default=None, truthy={"true"}, falsy={"false"})
+    min_lat = fields.Float(load_default=None, allow_nan=False, validate=validate.Range(min=-90, max=90))
+    max_lat = fields.Float(load_default=None, allow_nan=False, validate=validate.Range(min=-90, max=90))
+    min_lng = fields.Float(load_default=None, allow_nan=False, validate=validate.Range(min=-180, max=180))
+    max_lng = fields.Float(load_default=None, allow_nan=False, validate=validate.Range(min=-180, max=180))
 
     @pre_load
     def validate_date_format(self, data, **kwargs):
@@ -125,6 +131,24 @@ class EventListQuerySchema(QuerySchema):
                 {"end_date": ["종료일은 시작일보다 빠를 수 없습니다."]}
             )
 
+    @validates_schema
+    def validate_bounds(self, data, **kwargs):
+        # 영역은 네 값을 함께 받아야 한다. 날짜변경선을 넘는 영역은 국내 서비스라 지원하지 않는다.
+        keys = ("min_lat", "max_lat", "min_lng", "max_lng")
+        given = [key for key in keys if data.get(key) is not None]
+        if given and len(given) != len(keys):
+            raise ValidationError(
+                {key: ["지도 영역은 min_lat, max_lat, min_lng, max_lng를 함께 입력해주세요."] for key in keys if key not in given}
+            )
+        if given:
+            errors = {}
+            if data["min_lat"] > data["max_lat"]:
+                errors["max_lat"] = ["max_lat은 min_lat보다 작을 수 없습니다."]
+            if data["min_lng"] > data["max_lng"]:
+                errors["max_lng"] = ["max_lng는 min_lng보다 작을 수 없습니다."]
+            if errors:
+                raise ValidationError(errors)
+
 
 class EventCardSchema(Schema):
     """목록 카드 한 건. category/sido는 표시 이름이고 *_id/*_code는 필터 값이다."""
@@ -147,6 +171,8 @@ class EventCardSchema(Schema):
     # 목록·월간 인기 서비스가 events.service._attach_ratings로 붙인다. 붙이지 않은 객체는 응답에서 빠진다.
     average_rating = fields.Float()
     review_count = fields.Integer()
+    # 이름순. 조회 쪽에서 selectinload(Event.tags)로 한 번에 읽어야 N+1이 생기지 않는다.
+    tags = fields.Function(lambda event: sorted(tag.name for tag in event.tags))
 
 
 class EventListResponseSchema(Schema):

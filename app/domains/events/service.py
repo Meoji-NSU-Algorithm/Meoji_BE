@@ -82,7 +82,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
     statement = (
         select(Event, monthly_views.c.monthly_views)
         .join(monthly_views, monthly_views.c.event_id == Event.id)
-        .options(joinedload(Event.category), joinedload(Event.sido))
+        .options(joinedload(Event.category), joinedload(Event.sido), selectinload(Event.tags))
         .where(Event.end_date >= current_date)
         .order_by(monthly_views.c.monthly_views.desc(), Event.id.desc())
         .limit(query["size"])
@@ -93,7 +93,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
         ranked_ids = [event.id for event, _ in rows]
         recommendations = db.session.scalars(
             select(Event)
-            .options(joinedload(Event.category), joinedload(Event.sido))
+            .options(joinedload(Event.category), joinedload(Event.sido), selectinload(Event.tags))
             .where(Event.end_date >= current_date, Event.id.not_in(ranked_ids))
             .order_by(Event.end_date.asc(), Event.start_date.asc(), Event.id.asc())
             .limit(query["size"] - len(rows))
@@ -129,6 +129,14 @@ def list_events(query: dict) -> dict:
         conditions.append(Event.end_date >= query["start_date"])
     if query["end_date"] is not None:
         conditions.append(Event.start_date <= query["end_date"])
+
+    # 지도용 조건. 좌표가 없는 행사는 영역 조건에서도 자연히 빠진다(NULL BETWEEN은 거짓).
+    if query.get("has_coords"):
+        conditions.append(Event.latitude.is_not(None))
+        conditions.append(Event.longitude.is_not(None))
+    if query.get("min_lat") is not None:
+        conditions.append(Event.latitude.between(query["min_lat"], query["max_lat"]))
+        conditions.append(Event.longitude.between(query["min_lng"], query["max_lng"]))
 
     # q는 제목·장소·태그 중 한 곳이라도 일치하면 포함하는 통합 검색이다.
     keyword = _contains_keyword(query["q"])
@@ -170,7 +178,7 @@ def list_events(query: dict) -> dict:
     size = query["size"]
     statement = (
         select(Event)
-        .options(joinedload(Event.category), joinedload(Event.sido))
+        .options(joinedload(Event.category), joinedload(Event.sido), selectinload(Event.tags))
         .where(*conditions)
         .order_by(*order_by)
         .offset((page - 1) * size)
@@ -210,7 +218,7 @@ def get_event(
     with Session(db.engine, expire_on_commit=False) as session, session.begin():
         statement = (
             select(Event)
-            .options(selectinload(Event.category), selectinload(Event.sido))
+            .options(selectinload(Event.category), selectinload(Event.sido), selectinload(Event.tags))
             # 종료일로 막지 않는다. 지난 행사도 ID로 상세와 리뷰를 볼 수 있다.
             .where(Event.id == event_id)
         )
@@ -257,3 +265,15 @@ def get_event(
             )
         # expire_on_commit=False와 관계 선로딩 덕분에 세션 종료 후에도 직렬화할 수 있다.
         return event
+
+
+def cleanup_old_user_views(today: date | None = None) -> int:
+    """오늘(KST) 이전의 사용자별 조회 기록을 지우고 지운 행 수를 반환한다.
+
+    중복 판단에는 오늘 기록만 쓰인다. get_event는 그 사용자가 다시 조회할 때만 지난 기록을 지우므로,
+    다시 오지 않는 사용자의 기록이 쌓이지 않게 reviews.scheduler가 주기적으로 호출한다.
+    """
+    today = today or datetime.now(KST).date()
+    result = db.session.execute(delete(EventUserDailyView).where(EventUserDailyView.view_date < today))
+    db.session.commit()
+    return result.rowcount
