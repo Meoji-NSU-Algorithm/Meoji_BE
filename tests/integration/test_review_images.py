@@ -305,13 +305,58 @@ def test_cleanup_keeps_file_if_review_still_uses_it(client, login, make_event, s
     assert db.session.get(ReviewImageUpload, key) is None
 
 
-def test_upload_triggers_cleanup_of_old_uploads(client, login, s3):
-    """별도 스케줄러 없이 다음 업로드 때 오래된 미첨부 업로드가 정리된다."""
+def test_upload_does_not_run_cleanup(client, login, s3):
+    """정리는 스케줄러가 맡으므로 업로드 요청은 오래된 미첨부 업로드를 지우지 않는다. (#36)"""
     headers, _, _ = login()
     old = _upload(client, headers).json["data"]["key"]
     _age(old, 25)
     _upload(client, headers)
-    assert old not in s3.objects
+    assert old in s3.objects
+
+
+def test_cleanup_keeps_record_when_storage_delete_fails(client, login, s3, monkeypatch):
+    """저장소 삭제가 실패하면 기록을 남겨 다음 정리 때 다시 시도한다. (#36)"""
+    from botocore.exceptions import BotoCoreError
+
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    _age(key, 25)
+
+    real_delete = s3.delete_objects
+
+    def fail(**kwargs):
+        raise BotoCoreError()
+
+    monkeypatch.setattr(s3, "delete_objects", fail)
+    assert review_service.cleanup_unattached_uploads() == 0
+    db.session.expire_all()
+    assert db.session.get(ReviewImageUpload, key) is not None
+
+    monkeypatch.setattr(s3, "delete_objects", real_delete)
+    assert review_service.cleanup_unattached_uploads() == 1
+    assert key not in s3.objects
+    db.session.expire_all()
+    assert db.session.get(ReviewImageUpload, key) is None
+
+
+def test_cleanup_keeps_record_only_for_partially_failed_keys(client, login, s3, monkeypatch):
+    """S3가 일부 key만 실패로 돌려주면 그 key의 기록만 남긴다. (#36)"""
+    headers, _, _ = login()
+    ok, bad = (_upload(client, headers).json["data"]["key"] for _ in range(2))
+    _age(ok, 25)
+    _age(bad, 25)
+
+    real_delete = s3.delete_objects
+
+    def partial(Bucket, Delete):
+        real_delete(Bucket, {"Objects": [obj for obj in Delete["Objects"] if obj["Key"] != bad]})
+        return {"Errors": [{"Key": bad, "Code": "InternalError"}]}
+
+    monkeypatch.setattr(s3, "delete_objects", partial)
+    assert review_service.cleanup_unattached_uploads() == 1
+    db.session.expire_all()
+    assert db.session.get(ReviewImageUpload, ok) is None
+    assert db.session.get(ReviewImageUpload, bad) is not None
 
 
 # ---------- 회원 탈퇴 ----------

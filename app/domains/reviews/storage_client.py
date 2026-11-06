@@ -21,6 +21,9 @@ MAX_ATTEMPTS = 2
 # presigned URL 유효 시간(초). S3_PUBLIC_URL이 없을 때만 쓴다.
 PRESIGNED_EXPIRES = 3600
 
+# S3 delete_objects 한 번에 지울 수 있는 최대 객체 수.
+_DELETE_BATCH = 1000
+
 # app.extensions에 클라이언트를 캐시하는 키. 앱마다 하나만 만든다.
 _EXTENSION_KEY = "review_storage_client"
 
@@ -89,22 +92,31 @@ def put_object(key: str, data: bytes, content_type: str) -> None:
         raise BusinessException(ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE) from None
 
 
-def delete_objects(keys) -> None:
-    """객체를 지운다. 리뷰 수정·삭제가 커밋된 뒤에 호출한다.
+def delete_objects(keys) -> set[str]:
+    """객체를 지우고 실제로 지운 key 집합을 반환한다.
 
-    리뷰 변경은 이미 끝났으므로 실패해도 예외를 올리지 않고 로그만 남긴다.
-    남은 파일은 어디서도 참조되지 않을 뿐 응답에는 영향이 없다.
+    실패해도 예외를 올리지 않고 로그만 남긴다. 리뷰 수정·삭제·탈퇴는 변경이 이미 커밋된 뒤라 반환값을 무시하고,
+    미첨부 업로드 정리는 지운 key의 기록만 지워 실패한 key를 다음 정리 때 다시 시도한다.
+    S3는 한 번에 _DELETE_BATCH개까지만 받으므로 나눠서 요청한다.
     """
     keys = list(keys)
-    if not keys:
-        return
-    try:
-        _client().delete_objects(
-            Bucket=current_app.config["S3_BUCKET"],
-            Delete={"Objects": [{"Key": key} for key in keys], "Quiet": True},
-        )
-    except (BusinessException, BotoCoreError, ClientError):
-        current_app.logger.warning("리뷰 이미지 삭제 실패(%d개)", len(keys), exc_info=True)
+    deleted = set()
+    for start in range(0, len(keys), _DELETE_BATCH):
+        chunk = keys[start:start + _DELETE_BATCH]
+        try:
+            # Quiet 모드는 실패한 객체만 Errors에 담아 돌려준다.
+            result = _client().delete_objects(
+                Bucket=current_app.config["S3_BUCKET"],
+                Delete={"Objects": [{"Key": key} for key in chunk], "Quiet": True},
+            )
+        except (BusinessException, BotoCoreError, ClientError):
+            current_app.logger.warning("리뷰 이미지 삭제 실패(%d개)", len(chunk), exc_info=True)
+            continue
+        failed = {error["Key"] for error in (result or {}).get("Errors", [])}
+        if failed:
+            current_app.logger.warning("리뷰 이미지 일부 삭제 실패(%d개)", len(failed))
+        deleted |= set(chunk) - failed
+    return deleted
 
 
 def object_url(key: str) -> str | None:

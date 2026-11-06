@@ -24,7 +24,7 @@ _MYSQL_DUP_ENTRY = 1062
 # 업로드 후 이 시간 안에 리뷰에 붙지 않으면 정리한다. 작성 화면에 머무는 시간보다 넉넉하게 둔다.
 UNATTACHED_UPLOAD_TTL = timedelta(hours=24)
 
-# 한 번에 정리하는 최대 개수. 업로드 요청이 정리 때문에 오래 걸리지 않게 나눠서 지운다.
+# 한 번에 정리하는 최대 개수. 정리 중 잡는 행 잠금이 길어지지 않게 나눠서 지운다.
 _CLEANUP_BATCH = 50
 
 
@@ -113,9 +113,6 @@ def upload_image(file_storage, user_id: int) -> dict:
     db.session.commit()
     storage_client.put_object(key, data, "image/webp")
 
-    # 별도 스케줄러 없이, 업로드가 있을 때 오래된 미첨부 업로드를 조금씩 정리한다.
-    cleanup_unattached_uploads()
-
     return {"key": key, "url": storage_client.object_url(key)}
 
 
@@ -146,8 +143,9 @@ def _claim_uploads(keys, user_id: int) -> None:
 def cleanup_unattached_uploads(now: datetime | None = None) -> int:
     """UNATTACHED_UPLOAD_TTL이 지나도록 리뷰에 붙지 않은 업로드를 저장소와 기록에서 지운다.
 
-    한 번에 _CLEANUP_BATCH개까지 처리하고 지운 파일 수를 반환한다. 업로드 요청 안에서 호출되므로,
-    _delete_unreferenced_images처럼 실패해도 예외를 올리지 않고 로그만 남긴다.
+    reviews.scheduler가 주기적으로 호출한다. 한 번에 _CLEANUP_BATCH개까지 처리하고 지운 파일 수를 반환한다.
+    파일을 먼저 지우고 삭제에 성공한 key의 기록만 지운다. 저장소 삭제가 실패한 key는 기록이 남아
+    다음 정리 때 다시 시도된다. 실패해도 예외를 올리지 않고 로그만 남긴다.
     """
     # created_at은 UTC naive로 저장되므로 같은 형식으로 비교한다.
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
@@ -164,20 +162,23 @@ def cleanup_unattached_uploads(now: datetime | None = None) -> int:
         ))
 
         if not keys:
+            db.session.rollback()
             return 0
 
         # 기록이 남았더라도 리뷰에 붙어 있으면 파일은 지우지 않고 기록만 지운다.
         unattached = set(keys) - _keys_attached_elsewhere(keys)
-        db.session.execute(delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(keys)))
+        deleted = storage_client.delete_objects(sorted(unattached))
+        done = deleted | (set(keys) - unattached)
+
+        if done:
+            db.session.execute(delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(done)))
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.warning("미첨부 리뷰 이미지 정리 실패", exc_info=True)
         return 0
 
-    storage_client.delete_objects(sorted(unattached))
-
-    return len(unattached)
+    return len(deleted)
 
 
 def _is_duplicate_entry(error: IntegrityError) -> bool:

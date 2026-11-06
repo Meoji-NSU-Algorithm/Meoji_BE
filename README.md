@@ -30,7 +30,7 @@
    | `JWT_SECRET_KEY` | 필수 | JWT 서명 키. 32자 이상을 권장합니다(짧으면 경고만 합니다). |
    | `KAKAO_CLIENT_ID` | 필수 | 카카오 REST API 키 |
    | `KAKAO_REDIRECT_URI` | 필수 | 카카오 로그인 후 인가 코드를 받는 주소(카카오 디벨로퍼스에 등록한 값과 같아야 합니다) |
-   | `SQLALCHEMY_DATABASE_URI` | 필수 | MySQL 접속 주소 |
+   | `SQLALCHEMY_DATABASE_URI` | 필수 | MySQL 접속 주소. **MySQL 8.0.17 이상** 필요(리뷰 이미지 검사에 `JSON_OVERLAPS` 사용, MariaDB 불가) |
    | `KAKAO_CLIENT_SECRET` | 선택 | 카카오 보안 설정을 켰을 때만 필요합니다 |
    | `TOURAPI_KEY` | 수집 시 필요 | 공공데이터포털 TourAPI 키. 하루 호출 한도가 있을 수 있습니다 |
    | `FLASK_DEBUG` | 선택 | 로컬 개발에서만 `1` |
@@ -38,6 +38,7 @@
    - 필수 값이 비어 있거나 `NEED_TO_SET` 같은 예시 값이면 서버가 시작되지 않고, 빠진 항목을 알려 줍니다.
    - DB는 직접 테이블을 만들지 말고 `flask db upgrade`로 만드세요. 이 마이그레이션이 카테고리·시도·태그 기준 데이터(시드)를 넣습니다. 시드가 없으면 행사 수집이 전부 실패합니다.
    - 행사 수집(TourAPI)은 12시간마다 전국 행사를 다시 가져옵니다. 호출 한도가 있는 키는 사용량을 확인하세요.
+   - 리뷰에 24시간 넘게 붙지 않은 업로드 이미지는 1시간마다 저장소와 기록에서 정리합니다(`app/domains/reviews/scheduler.py`).
 4. 앱 실행
    ```bash
    python wsgi.py
