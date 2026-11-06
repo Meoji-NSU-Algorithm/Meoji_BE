@@ -76,7 +76,7 @@ REQUIRED_CONFIG_KEYS = (
 JWT_SECRET_MIN_LENGTH = 32
 
 
-def _is_placeholder(value: str) -> bool:
+def is_placeholder(value: str) -> bool:
     """.env.example에서 복사한 채 남겨 둔 자리표시 값인지 판단한다."""
     upper = value.strip().upper()
     return upper == "NEED_TO_SET" or upper.startswith("YOUR_") or upper == "CHANGE"
@@ -96,7 +96,7 @@ def validate_required_config(app) -> None:
         value = app.config.get(key)
         if value is None or not str(value).strip():
             problems.append(f"{key}(누락)")
-        elif _is_placeholder(str(value)):
+        elif is_placeholder(str(value)):
             problems.append(f"{key}(자리표시 값)")
     if problems:
         raise RuntimeError(

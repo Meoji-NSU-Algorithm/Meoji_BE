@@ -24,7 +24,11 @@ _MYSQL_DUP_ENTRY = 1062
 # 업로드 후 이 시간 안에 리뷰에 붙지 않으면 정리한다. 작성 화면에 머무는 시간보다 넉넉하게 둔다.
 UNATTACHED_UPLOAD_TTL = timedelta(hours=24)
 
-# 한 번에 정리하는 최대 개수. 업로드 요청이 정리 때문에 오래 걸리지 않게 나눠서 지운다.
+# 사용자당 리뷰에 아직 붙이지 않은 업로드 최대 개수. 리뷰 한 개의 최대 장수(images.MAX_REVIEW_IMAGES=5)의
+# 4배로, 작성 화면을 몇 번 오가며 사진을 바꿔도 막히지 않을 만큼 둔다.
+MAX_UNATTACHED_UPLOADS = 20
+
+# 한 번에 정리하는 최대 개수. 정리 중 잡는 행 잠금이 길어지지 않게 나눠서 지운다.
 _CLEANUP_BATCH = 50
 
 
@@ -37,7 +41,8 @@ def create_review(data: dict) -> Review:
     Raises:
         BusinessException: 사용자가 없으면 USER_NOT_FOUND, 행사가 없으면 EVENT_NOT_FOUND,
             이미 같은 행사에 리뷰를 썼으면 REVIEW_ALREADY_EXISTS,
-            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED.
+            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED,
+            직접 올린 미첨부 이미지가 아니면 REVIEW_IMAGE_NOT_UPLOADED.
     """
     user = db.session.get(User, data["user_id"])
 
@@ -59,6 +64,9 @@ def create_review(data: dict) -> Review:
 
     images = data.get("images", [])
     _ensure_images_not_attached(images)
+    # 리뷰를 세션에 넣기 전에 처리한다. 넣은 뒤에 DML을 실행하면 autoflush로 INSERT가 먼저 나가
+    # 동시 중복 제출의 unique 위반이 아래 try 바깥에서 터져 409 대신 500이 된다.
+    _claim_uploads(images, data["user_id"])
 
     review = Review(
         user_id=data["user_id"],
@@ -69,7 +77,6 @@ def create_review(data: dict) -> Review:
     )
 
     db.session.add(review)
-    _mark_attached(images)
 
     try:
         db.session.commit()
@@ -101,6 +108,8 @@ def upload_image(file_storage, user_id: int) -> dict:
     if file_storage is None or not file_storage.filename:
         raise BusinessException(ErrorCode.COMMON_INVALID_INPUT, extra={"errors": {"image": ["이미지 파일이 필요합니다."]}})
 
+    _ensure_upload_quota(user_id)
+
     # 변환을 먼저 끝내 이미지가 아닌 파일로는 저장소 설정 오류까지 가지 않게 한다.
     key, data = prepare_review_image(file_storage)
 
@@ -110,52 +119,93 @@ def upload_image(file_storage, user_id: int) -> dict:
     db.session.commit()
     storage_client.put_object(key, data, "image/webp")
 
-    # 별도 스케줄러 없이, 업로드가 있을 때 오래된 미첨부 업로드를 조금씩 정리한다.
-    cleanup_unattached_uploads()
-
     return {"key": key, "url": storage_client.object_url(key)}
 
 
-def _mark_attached(keys) -> None:
-    """리뷰에 붙은 key의 업로드 기록을 지운다. 리뷰 저장과 같은 트랜잭션에서 커밋된다."""
+def _ensure_upload_quota(user_id: int) -> None:
+    """리뷰에 아직 붙지 않은 이 사용자의 업로드가 MAX_UNATTACHED_UPLOADS개 미만인지 확인한다.
+
+    정리 대상(UNATTACHED_UPLOAD_TTL 경과)은 곧 지워지므로 세지 않는다. 동시 업로드로 한도를 몇 장 넘길 수는
+    있지만, 반복 업로드로 저장소를 무한히 채우는 것을 막는 것이 목적이라 잠금은 걸지 않는다.
+
+    Raises:
+        BusinessException: 한도에 이르렀으면 REVIEW_IMAGE_UPLOAD_LIMIT(429).
+    """
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - UNATTACHED_UPLOAD_TTL
+    pending = db.session.scalar(
+        select(func.count()).select_from(ReviewImageUpload).where(
+            ReviewImageUpload.user_id == user_id,
+            ReviewImageUpload.created_at >= since,
+        )
+    )
+
+    if pending >= MAX_UNATTACHED_UPLOADS:
+        raise BusinessException(ErrorCode.REVIEW_IMAGE_UPLOAD_LIMIT)
+
+
+def _claim_uploads(keys, user_id: int) -> None:
+    """새로 붙이는 key가 이 사용자가 올린 미첨부 업로드인지 확인하고 업로드 기록을 지운다.
+
+    기록 삭제가 확인을 겸한다. 지운 행 수가 key 수보다 적으면 업로드한 적 없는 key, 남이 올린 key,
+    정리된(24시간 지난) key가 섞인 것이다. 같은 key를 동시에 붙이면 뒤 요청은 앞 요청의 행 잠금을
+    기다렸다가 0행을 지우게 되어 거부된다. 기록 삭제는 리뷰 저장과 같은 트랜잭션에서 커밋된다.
+
+    Raises:
+        BusinessException: REVIEW_IMAGE_NOT_UPLOADED. 세션은 롤백한다.
+    """
     keys = list(keys)
 
-    if keys:
-        db.session.execute(delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(keys)))
+    if not keys:
+        return
+
+    result = db.session.execute(
+        delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(keys), ReviewImageUpload.user_id == user_id)
+    )
+
+    if result.rowcount != len(keys):
+        db.session.rollback()
+        raise BusinessException(ErrorCode.REVIEW_IMAGE_NOT_UPLOADED)
 
 
 def cleanup_unattached_uploads(now: datetime | None = None) -> int:
     """UNATTACHED_UPLOAD_TTL이 지나도록 리뷰에 붙지 않은 업로드를 저장소와 기록에서 지운다.
 
-    한 번에 _CLEANUP_BATCH개까지 처리하고 지운 파일 수를 반환한다. 업로드 요청 안에서 호출되므로,
-    _delete_unreferenced_images처럼 실패해도 예외를 올리지 않고 로그만 남긴다.
+    reviews.scheduler가 주기적으로 호출한다. 한 번에 _CLEANUP_BATCH개까지 처리하고 지운 파일 수를 반환한다.
+    파일을 먼저 지우고 삭제에 성공한 key의 기록만 지운다. 저장소 삭제가 실패한 key는 기록이 남아
+    다음 정리 때 다시 시도된다. 실패해도 예외를 올리지 않고 로그만 남긴다.
     """
     # created_at은 UTC naive로 저장되므로 같은 형식으로 비교한다.
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
 
     try:
+        # 행을 잠가, 정리하는 동안 같은 key를 리뷰에 붙이는 요청이 끼어들지 못하게 한다.
+        # 그 요청은 정리가 끝난 뒤 기록이 없어 REVIEW_IMAGE_NOT_UPLOADED로 거부된다.
         keys = list(db.session.scalars(
             select(ReviewImageUpload.key)
             .where(ReviewImageUpload.created_at < now - UNATTACHED_UPLOAD_TTL)
             .order_by(ReviewImageUpload.created_at)
             .limit(_CLEANUP_BATCH)
+            .with_for_update()
         ))
 
         if not keys:
+            db.session.rollback()
             return 0
 
         # 기록이 남았더라도 리뷰에 붙어 있으면 파일은 지우지 않고 기록만 지운다.
         unattached = set(keys) - _keys_attached_elsewhere(keys)
-        db.session.execute(delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(keys)))
+        deleted = storage_client.delete_objects(sorted(unattached))
+        done = deleted | (set(keys) - unattached)
+
+        if done:
+            db.session.execute(delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(done)))
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.warning("미첨부 리뷰 이미지 정리 실패", exc_info=True)
         return 0
 
-    storage_client.delete_objects(sorted(unattached))
-
-    return len(unattached)
+    return len(deleted)
 
 
 def _is_duplicate_entry(error: IntegrityError) -> bool:
@@ -343,14 +393,53 @@ def get_rating_info(event_id: int) -> dict:
     }
 
 
+def get_rating_map(event_ids) -> dict[int, dict]:
+    """여러 행사의 평균 평점과 리뷰 개수를 쿼리 한 번으로 구한다. 목록 카드용이다.
+
+    계산 규칙은 get_rating_info와 같다(소수 첫째 자리 반올림). 리뷰가 없는 행사는 결과에 없다.
+    """
+    ids = list(event_ids)
+
+    if not ids:
+        return {}
+
+    rows = db.session.execute(
+        select(Review.event_id, func.avg(Review.rating), func.count(Review.id))
+        .where(Review.event_id.in_(ids))
+        .group_by(Review.event_id)
+    ).all()
+
+    return {
+        event_id: {"average_rating": round(float(average), 1), "review_count": count}
+        for event_id, average, count in rows
+    }
+
+
+def _get_review_for_write(review_id: int) -> Review | None:
+    """수정·삭제할 리뷰를 행 잠금(SELECT ... FOR UPDATE)으로 읽는다.
+
+    같은 리뷰의 수정·삭제가 동시에 오면 뒤 요청이 앞 요청의 커밋을 기다린 뒤 최신 상태를 읽는다.
+    그래서 수정끼리는 앞 수정이 반영된 images를 기준으로 비교하고(빠진 사진 정리 누락 방지),
+    삭제 뒤의 수정은 0행 UPDATE(StaleDataError, 500) 대신 REVIEW_NOT_FOUND가 된다.
+    populate_existing은 세션에 남은 이전 값 대신 잠금 뒤 읽은 값으로 객체를 갱신한다.
+    """
+    return db.session.scalar(
+        select(Review)
+        .where(Review.id == review_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
 def update_review(review_id: int, user_id: int, data: dict) -> Review:
     """본인 리뷰에서 data에 있는 rating/content/images만 수정한다. images는 목록 전체를 교체한다.
 
     Raises:
         BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN,
-            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED.
+            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED,
+            새로 붙이는 이미지가 직접 올린 미첨부 이미지가 아니면 REVIEW_IMAGE_NOT_UPLOADED.
     """
-    review = db.session.get(Review, review_id)
+    review = _get_review_for_write(review_id)
 
     if review is None:
         raise BusinessException(ErrorCode.REVIEW_NOT_FOUND)
@@ -361,6 +450,8 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
     # 값을 바꾸기 전에 검사해, 거부될 때 세션에 일부만 바뀐 리뷰가 남지 않게 한다.
     if "images" in data:
         _ensure_images_not_attached(data["images"], review.id)
+        # 이미 이 리뷰에 붙어 있던 key는 다시 확인하지 않는다.
+        _claim_uploads([key for key in data["images"] if key not in (review.images or [])], user_id)
 
     if "rating" in data:
         review.rating = data["rating"]
@@ -373,7 +464,6 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
     if "images" in data:
         removed_images = [key for key in (review.images or []) if key not in data["images"]]
         review.images = data["images"]
-        _mark_attached(data["images"])
 
     db.session.commit()
     _delete_unreferenced_images(removed_images)
@@ -389,7 +479,7 @@ def delete_review(review_id: int, user_id: int) -> Review:
     Raises:
         BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN.
     """
-    review = db.session.get(Review, review_id)
+    review = _get_review_for_write(review_id)
 
     if review is None:
         raise BusinessException(ErrorCode.REVIEW_NOT_FOUND)

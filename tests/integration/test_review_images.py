@@ -305,13 +305,58 @@ def test_cleanup_keeps_file_if_review_still_uses_it(client, login, make_event, s
     assert db.session.get(ReviewImageUpload, key) is None
 
 
-def test_upload_triggers_cleanup_of_old_uploads(client, login, s3):
-    """별도 스케줄러 없이 다음 업로드 때 오래된 미첨부 업로드가 정리된다."""
+def test_upload_does_not_run_cleanup(client, login, s3):
+    """정리는 스케줄러가 맡으므로 업로드 요청은 오래된 미첨부 업로드를 지우지 않는다. (#36)"""
     headers, _, _ = login()
     old = _upload(client, headers).json["data"]["key"]
     _age(old, 25)
     _upload(client, headers)
-    assert old not in s3.objects
+    assert old in s3.objects
+
+
+def test_cleanup_keeps_record_when_storage_delete_fails(client, login, s3, monkeypatch):
+    """저장소 삭제가 실패하면 기록을 남겨 다음 정리 때 다시 시도한다. (#36)"""
+    from botocore.exceptions import BotoCoreError
+
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    _age(key, 25)
+
+    real_delete = s3.delete_objects
+
+    def fail(**kwargs):
+        raise BotoCoreError()
+
+    monkeypatch.setattr(s3, "delete_objects", fail)
+    assert review_service.cleanup_unattached_uploads() == 0
+    db.session.expire_all()
+    assert db.session.get(ReviewImageUpload, key) is not None
+
+    monkeypatch.setattr(s3, "delete_objects", real_delete)
+    assert review_service.cleanup_unattached_uploads() == 1
+    assert key not in s3.objects
+    db.session.expire_all()
+    assert db.session.get(ReviewImageUpload, key) is None
+
+
+def test_cleanup_keeps_record_only_for_partially_failed_keys(client, login, s3, monkeypatch):
+    """S3가 일부 key만 실패로 돌려주면 그 key의 기록만 남긴다. (#36)"""
+    headers, _, _ = login()
+    ok, bad = (_upload(client, headers).json["data"]["key"] for _ in range(2))
+    _age(ok, 25)
+    _age(bad, 25)
+
+    real_delete = s3.delete_objects
+
+    def partial(Bucket, Delete):
+        real_delete(Bucket, {"Objects": [obj for obj in Delete["Objects"] if obj["Key"] != bad]})
+        return {"Errors": [{"Key": bad, "Code": "InternalError"}]}
+
+    monkeypatch.setattr(s3, "delete_objects", partial)
+    assert review_service.cleanup_unattached_uploads() == 1
+    db.session.expire_all()
+    assert db.session.get(ReviewImageUpload, ok) is None
+    assert db.session.get(ReviewImageUpload, bad) is not None
 
 
 # ---------- 회원 탈퇴 ----------
@@ -368,3 +413,128 @@ def test_my_reviews_include_event_author_and_images(client, login, make_event, s
     }
     assert review["author"]["id"] == uid
     assert review["images"] == [{"key": key, "url": f"{PUBLIC}/{key}"}]
+
+
+# ---------- 이슈 #34: 업로더 소유권·존재 검증 ----------
+def test_rejects_key_never_uploaded(client, login, make_event, s3):
+    headers, _, _ = login()
+    response = _review(client, headers, make_event().id, ["reviews/" + "a" * 32 + ".webp"])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+
+
+def test_rejects_other_users_unattached_key(client, login, make_event, s3):
+    a_headers, _, _ = login(kakao_id=8301)
+    b_headers, _, _ = login(kakao_id=8302)
+    a_key = _upload(client, a_headers).json["data"]["key"]
+    response = _review(client, b_headers, make_event().id, [a_key])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+    # A는 그대로 자기 리뷰에 붙일 수 있다
+    assert _review(client, a_headers, make_event().id, [a_key]).status_code == 201
+
+
+def test_rejects_key_cleaned_after_ttl(client, login, make_event, s3):
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    _age(key, 25)
+    assert review_service.cleanup_unattached_uploads() == 1
+    response = _review(client, headers, make_event().id, [key])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+
+
+def test_update_rejects_not_owned_key_without_changing_review(client, login, make_event, s3):
+    headers, _, _ = login()
+    rid = _review(client, headers, make_event().id, []).json["data"]["id"]
+    response = client.put(f"/api/reviews/{rid}", headers=headers,
+                          json={"content": "바뀌면 안 됨", "images": ["reviews/" + "b" * 32 + ".webp"]})
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+    db.session.expire_all()
+    assert db.session.get(Review, rid).content == "후기"
+
+
+def test_same_key_attached_twice_rejected_even_if_check_is_bypassed(client, login, make_event, s3, monkeypatch):
+    """동시 첨부 경합: 두 요청이 '다른 리뷰에 붙었는가' 검사를 모두 통과해도 업로드 기록은 한 번만 쓸 수 있다."""
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    monkeypatch.setattr(review_service, "_ensure_images_not_attached", lambda *args, **kwargs: None)
+    assert _review(client, headers, make_event().id, [key]).status_code == 201
+    response = _review(client, headers, make_event().id, [key])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+
+
+# ---------- 점검 보고서 L12: 깨진 PNG ----------
+def test_corrupted_png_is_400_not_500(client, login, s3):
+    """CRC가 틀린 PNG는 verify()가 SyntaxError를 던지지만 400 REVIEW_IMAGE_INVALID로 응답한다."""
+    headers, _, _ = login()
+    out = io.BytesIO()
+    Image.new("RGB", (8, 8), "red").save(out, "PNG")
+    raw = bytearray(out.getvalue())
+    idat = raw.index(b"IDAT")
+    length = int.from_bytes(raw[idat - 4:idat], "big")
+    crc = idat + 4 + length
+    raw[crc:crc + 4] = bytes(b ^ 0xFF for b in raw[crc:crc + 4])
+
+    response = _upload(client, headers, file=io.BytesIO(bytes(raw)), name="broken.png")
+
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_INVALID")
+
+
+# ---------- 점검 보고서 M2: 미첨부 업로드 한도와 정리 반복 ----------
+def test_upload_limit_for_unattached_images(client, login, make_event, s3, monkeypatch):
+    monkeypatch.setattr(review_service, "MAX_UNATTACHED_UPLOADS", 2)
+    headers, _, _ = login()
+    first = _upload(client, headers).json["data"]["key"]
+    _upload(client, headers)
+
+    response = _upload(client, headers)
+    assert (response.status_code, response.json["code"]) == (429, "REVIEW_IMAGE_UPLOAD_LIMIT")
+
+    # 리뷰에 붙이면 한도가 풀린다
+    _review(client, headers, make_event().id, [first])
+    assert _upload(client, headers).status_code == 201
+
+
+def test_upload_limit_ignores_expired_uploads(client, login, s3, monkeypatch):
+    monkeypatch.setattr(review_service, "MAX_UNATTACHED_UPLOADS", 1)
+    headers, _, _ = login()
+    old = _upload(client, headers).json["data"]["key"]
+    _age(old, 25)
+    assert _upload(client, headers).status_code == 201
+
+
+def test_upload_limit_is_per_user(client, login, s3, monkeypatch):
+    monkeypatch.setattr(review_service, "MAX_UNATTACHED_UPLOADS", 1)
+    a_headers, _, _ = login(kakao_id=8401)
+    b_headers, _, _ = login(kakao_id=8402)
+    _upload(client, a_headers)
+    assert _upload(client, b_headers).status_code == 201
+
+
+def test_scheduler_repeats_batches_until_empty(client, login, s3, monkeypatch):
+    from app.domains.reviews import scheduler
+
+    monkeypatch.setattr(review_service, "_CLEANUP_BATCH", 2)
+    headers, _, _ = login()
+    keys = [_upload(client, headers).json["data"]["key"] for _ in range(5)]
+    for key in keys:
+        _age(key, 25)
+
+    assert scheduler.run_cleanup_until_empty() == 5
+    assert not any(key in s3.objects for key in keys)
+
+
+def test_scheduler_stops_when_storage_keeps_failing(client, login, s3, monkeypatch):
+    from botocore.exceptions import BotoCoreError
+    from app.domains.reviews import scheduler
+
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    _age(key, 25)
+    calls = []
+
+    def fail(**kwargs):
+        calls.append(1)
+        raise BotoCoreError()
+
+    monkeypatch.setattr(s3, "delete_objects", fail)
+    assert scheduler.run_cleanup_until_empty() == 0
+    assert len(calls) == 1

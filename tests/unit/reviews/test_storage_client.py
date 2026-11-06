@@ -51,4 +51,47 @@ def test_put_object_without_config_is_unavailable(s3_config, monkeypatch):
 
 def test_delete_objects_failure_is_only_logged(s3_config, monkeypatch):
     monkeypatch.setitem(s3_config.config, "S3_BUCKET", None)
-    storage_client.delete_objects(["reviews/a.webp"])  # 예외를 올리지 않는다
+    assert storage_client.delete_objects(["reviews/a.webp"]) == set()  # 예외를 올리지 않는다
+
+
+def test_delete_objects_splits_into_batches_of_1000(s3_config, monkeypatch):
+    """S3는 한 번에 1000개까지만 지우므로 나눠서 요청하고, 실패한 key는 결과에서 뺀다."""
+    calls = []
+
+    class Fake:
+        def delete_objects(self, Bucket, Delete):
+            calls.append(len(Delete["Objects"]))
+            return {"Errors": [{"Key": "reviews/0.webp"}]} if len(calls) == 1 else {}
+
+    monkeypatch.setattr(storage_client, "_client", lambda: Fake())
+    keys = [f"reviews/{i}.webp" for i in range(2001)]
+
+    deleted = storage_client.delete_objects(keys)
+
+    assert calls == [1000, 1000, 1]
+    assert deleted == set(keys) - {"reviews/0.webp"}
+
+
+@pytest.mark.parametrize("key, value", [
+    ("S3_ENDPOINT", "NEED_TO_SET"),
+    ("S3_ACCESS_KEY", "NEED_TO_SET"),
+    ("S3_SECRET_KEY", "YOUR_SECRET"),
+    ("S3_BUCKET", "NEED_TO_SET"),
+])
+def test_placeholder_values_are_not_configured(s3_config, monkeypatch, key, value):
+    """.env.example 값을 그대로 쓰면 조회는 url null, 업로드는 503이다(500이 아니다)."""
+    monkeypatch.setitem(s3_config.config, key, value)
+    assert storage_client.is_configured() is False
+    assert storage_client.object_url("reviews/a.webp") is None
+    with pytest.raises(BusinessException) as e:
+        storage_client.put_object("reviews/a.webp", b"x", "image/webp")
+    assert e.value.error_code == ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE
+
+
+def test_invalid_endpoint_is_storage_unavailable(s3_config, monkeypatch):
+    """boto3가 거부하는 엔드포인트 형식도 500 대신 설정 오류로 처리한다."""
+    monkeypatch.setitem(s3_config.config, "S3_ENDPOINT", "not a url")
+    assert storage_client.object_url("reviews/a.webp") is None
+    with pytest.raises(BusinessException) as e:
+        storage_client.put_object("reviews/a.webp", b"x", "image/webp")
+    assert e.value.error_code == ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE
