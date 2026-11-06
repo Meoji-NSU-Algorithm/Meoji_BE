@@ -1,6 +1,7 @@
 """등록된 URL 목록을 고정해 실수로 경로가 바뀌면 실패하게 한다."""
 
 EXPECTED_ROUTES = {
+    ("GET", "/api/health"): "api.health.health_check",
     ("POST", "/api/auth/kakao"): "api.auth.kakao_login",
     ("POST", "/api/auth/refresh"): "api.auth.refresh_token",
     ("POST", "/api/auth/logout"): "api.auth.logout",
