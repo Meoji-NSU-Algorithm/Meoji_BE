@@ -368,3 +368,49 @@ def test_my_reviews_include_event_author_and_images(client, login, make_event, s
     }
     assert review["author"]["id"] == uid
     assert review["images"] == [{"key": key, "url": f"{PUBLIC}/{key}"}]
+
+
+# ---------- 이슈 #34: 업로더 소유권·존재 검증 ----------
+def test_rejects_key_never_uploaded(client, login, make_event, s3):
+    headers, _, _ = login()
+    response = _review(client, headers, make_event().id, ["reviews/" + "a" * 32 + ".webp"])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+
+
+def test_rejects_other_users_unattached_key(client, login, make_event, s3):
+    a_headers, _, _ = login(kakao_id=8301)
+    b_headers, _, _ = login(kakao_id=8302)
+    a_key = _upload(client, a_headers).json["data"]["key"]
+    response = _review(client, b_headers, make_event().id, [a_key])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+    # A는 그대로 자기 리뷰에 붙일 수 있다
+    assert _review(client, a_headers, make_event().id, [a_key]).status_code == 201
+
+
+def test_rejects_key_cleaned_after_ttl(client, login, make_event, s3):
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    _age(key, 25)
+    assert review_service.cleanup_unattached_uploads() == 1
+    response = _review(client, headers, make_event().id, [key])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+
+
+def test_update_rejects_not_owned_key_without_changing_review(client, login, make_event, s3):
+    headers, _, _ = login()
+    rid = _review(client, headers, make_event().id, []).json["data"]["id"]
+    response = client.put(f"/api/reviews/{rid}", headers=headers,
+                          json={"content": "바뀌면 안 됨", "images": ["reviews/" + "b" * 32 + ".webp"]})
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+    db.session.expire_all()
+    assert db.session.get(Review, rid).content == "후기"
+
+
+def test_same_key_attached_twice_rejected_even_if_check_is_bypassed(client, login, make_event, s3, monkeypatch):
+    """동시 첨부 경합: 두 요청이 '다른 리뷰에 붙었는가' 검사를 모두 통과해도 업로드 기록은 한 번만 쓸 수 있다."""
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    monkeypatch.setattr(review_service, "_ensure_images_not_attached", lambda *args, **kwargs: None)
+    assert _review(client, headers, make_event().id, [key]).status_code == 201
+    response = _review(client, headers, make_event().id, [key])
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")

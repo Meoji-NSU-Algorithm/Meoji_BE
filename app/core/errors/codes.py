@@ -109,6 +109,9 @@ class ErrorCode(Enum):
     REVIEW_IMAGE_TOO_LARGE = (413, "이미지는 한 장에 10MB까지 올릴 수 있습니다.")
     # 다른 리뷰에 이미 붙은 이미지 key를 첨부하려는 경우. 남의 이미지를 수정·삭제로 지우는 것을 막는다.
     REVIEW_IMAGE_ALREADY_ATTACHED = (409, "다른 리뷰에 첨부된 이미지는 사용할 수 없습니다.")
+    # 새로 붙이는 key가 이 사용자가 올린 미첨부 업로드가 아닌 경우.
+    # 업로드한 적 없는 key, 남이 올린 key, 24시간이 지나 정리된 key가 해당한다.
+    REVIEW_IMAGE_NOT_UPLOADED = (400, "직접 올린 이미지만 첨부할 수 있습니다. 이미지를 다시 올려주세요.")
     # S3_* 설정 누락이나 저장소 통신 실패. TOUR_API_REQUEST_FAILED처럼 원인은 로그에만 남긴다.
     REVIEW_IMAGE_STORAGE_UNAVAILABLE = (503, "이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
 

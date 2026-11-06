@@ -37,7 +37,8 @@ def create_review(data: dict) -> Review:
     Raises:
         BusinessException: 사용자가 없으면 USER_NOT_FOUND, 행사가 없으면 EVENT_NOT_FOUND,
             이미 같은 행사에 리뷰를 썼으면 REVIEW_ALREADY_EXISTS,
-            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED.
+            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED,
+            직접 올린 미첨부 이미지가 아니면 REVIEW_IMAGE_NOT_UPLOADED.
     """
     user = db.session.get(User, data["user_id"])
 
@@ -59,6 +60,9 @@ def create_review(data: dict) -> Review:
 
     images = data.get("images", [])
     _ensure_images_not_attached(images)
+    # 리뷰를 세션에 넣기 전에 처리한다. 넣은 뒤에 DML을 실행하면 autoflush로 INSERT가 먼저 나가
+    # 동시 중복 제출의 unique 위반이 아래 try 바깥에서 터져 409 대신 500이 된다.
+    _claim_uploads(images, data["user_id"])
 
     review = Review(
         user_id=data["user_id"],
@@ -69,7 +73,6 @@ def create_review(data: dict) -> Review:
     )
 
     db.session.add(review)
-    _mark_attached(images)
 
     try:
         db.session.commit()
@@ -116,12 +119,28 @@ def upload_image(file_storage, user_id: int) -> dict:
     return {"key": key, "url": storage_client.object_url(key)}
 
 
-def _mark_attached(keys) -> None:
-    """리뷰에 붙은 key의 업로드 기록을 지운다. 리뷰 저장과 같은 트랜잭션에서 커밋된다."""
+def _claim_uploads(keys, user_id: int) -> None:
+    """새로 붙이는 key가 이 사용자가 올린 미첨부 업로드인지 확인하고 업로드 기록을 지운다.
+
+    기록 삭제가 확인을 겸한다. 지운 행 수가 key 수보다 적으면 업로드한 적 없는 key, 남이 올린 key,
+    정리된(24시간 지난) key가 섞인 것이다. 같은 key를 동시에 붙이면 뒤 요청은 앞 요청의 행 잠금을
+    기다렸다가 0행을 지우게 되어 거부된다. 기록 삭제는 리뷰 저장과 같은 트랜잭션에서 커밋된다.
+
+    Raises:
+        BusinessException: REVIEW_IMAGE_NOT_UPLOADED. 세션은 롤백한다.
+    """
     keys = list(keys)
 
-    if keys:
-        db.session.execute(delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(keys)))
+    if not keys:
+        return
+
+    result = db.session.execute(
+        delete(ReviewImageUpload).where(ReviewImageUpload.key.in_(keys), ReviewImageUpload.user_id == user_id)
+    )
+
+    if result.rowcount != len(keys):
+        db.session.rollback()
+        raise BusinessException(ErrorCode.REVIEW_IMAGE_NOT_UPLOADED)
 
 
 def cleanup_unattached_uploads(now: datetime | None = None) -> int:
@@ -134,11 +153,14 @@ def cleanup_unattached_uploads(now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
 
     try:
+        # 행을 잠가, 정리하는 동안 같은 key를 리뷰에 붙이는 요청이 끼어들지 못하게 한다.
+        # 그 요청은 정리가 끝난 뒤 기록이 없어 REVIEW_IMAGE_NOT_UPLOADED로 거부된다.
         keys = list(db.session.scalars(
             select(ReviewImageUpload.key)
             .where(ReviewImageUpload.created_at < now - UNATTACHED_UPLOAD_TTL)
             .order_by(ReviewImageUpload.created_at)
             .limit(_CLEANUP_BATCH)
+            .with_for_update()
         ))
 
         if not keys:
@@ -348,7 +370,8 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
 
     Raises:
         BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN,
-            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED.
+            다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED,
+            새로 붙이는 이미지가 직접 올린 미첨부 이미지가 아니면 REVIEW_IMAGE_NOT_UPLOADED.
     """
     review = db.session.get(Review, review_id)
 
@@ -361,6 +384,8 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
     # 값을 바꾸기 전에 검사해, 거부될 때 세션에 일부만 바뀐 리뷰가 남지 않게 한다.
     if "images" in data:
         _ensure_images_not_attached(data["images"], review.id)
+        # 이미 이 리뷰에 붙어 있던 key는 다시 확인하지 않는다.
+        _claim_uploads([key for key in data["images"] if key not in (review.images or [])], user_id)
 
     if "rating" in data:
         review.rating = data["rating"]
@@ -373,7 +398,6 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
     if "images" in data:
         removed_images = [key for key in (review.images or []) if key not in data["images"]]
         review.images = data["images"]
-        _mark_attached(data["images"])
 
     db.session.commit()
     _delete_unreferenced_images(removed_images)

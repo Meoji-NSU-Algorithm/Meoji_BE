@@ -278,3 +278,30 @@ def test_delete_twice_second_not_found(user, event, make_review):
     with pytest.raises(BusinessException) as e:
         service.delete_review(r.id, user.id)
     assert code_of(e) == ErrorCode.REVIEW_NOT_FOUND
+
+
+def test_create_race_with_images_maps_to_already_exists(user, event, monkeypatch):
+    """이슈 #35: 사진이 있는 리뷰도 동시 중복 제출이면 500이 아니라 REVIEW_ALREADY_EXISTS다."""
+    from sqlalchemy import text
+    from app.domains.reviews.models import ReviewImageUpload
+
+    key = "reviews/" + "c" * 32 + ".webp"
+    db.session.add(ReviewImageUpload(key=key, user_id=user.id))
+    db.session.commit()
+    real_check = service._ensure_images_not_attached
+
+    def racing_check(keys, review_id=None):
+        # 중복 조회를 통과한 직후 경쟁 요청의 리뷰가 먼저 확정된 상황
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO review (user_id, event_id, rating, content, created_at, updated_at) "
+                "VALUES (:u, :e, 3.0, 'rival', NOW(), NOW())"), {"u": user.id, "e": event.id})
+        real_check(keys, review_id)
+
+    monkeypatch.setattr(service, "_ensure_images_not_attached", racing_check)
+    with pytest.raises(BusinessException) as e:
+        service.create_review({"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x", "images": [key]})
+    assert code_of(e) == ErrorCode.REVIEW_ALREADY_EXISTS
+    # 롤백으로 업로드 기록이 되살아나 다시 첨부할 수 있다
+    db.session.expire_all()
+    assert db.session.get(ReviewImageUpload, key) is not None

@@ -32,6 +32,7 @@ def create_review():
         COMMON_INVALID_INPUT: 본문 검증 실패(400). images의 형식·개수·중복 오류 포함.
         USER_NOT_FOUND / EVENT_NOT_FOUND: 작성자 또는 행사가 없음(404).
         REVIEW_IMAGE_ALREADY_ATTACHED: 다른 리뷰에 이미 붙은 이미지(409).
+        REVIEW_IMAGE_NOT_UPLOADED: 직접 올린 미첨부 이미지가 아님(400).
     """
     user_id = int(get_jwt_identity())
 
@@ -116,6 +117,7 @@ def update_review(review_id):
         REVIEW_NOT_FOUND: 리뷰가 없음(404).
         REVIEW_FORBIDDEN: 작성자가 아님(403).
         REVIEW_IMAGE_ALREADY_ATTACHED: 다른 리뷰에 이미 붙은 이미지(409).
+        REVIEW_IMAGE_NOT_UPLOADED: 직접 올린 미첨부 이미지가 아님(400).
     """
     user_id = int(get_jwt_identity())
 
