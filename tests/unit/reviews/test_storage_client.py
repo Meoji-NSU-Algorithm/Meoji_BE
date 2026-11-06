@@ -52,3 +52,28 @@ def test_put_object_without_config_is_unavailable(s3_config, monkeypatch):
 def test_delete_objects_failure_is_only_logged(s3_config, monkeypatch):
     monkeypatch.setitem(s3_config.config, "S3_BUCKET", None)
     storage_client.delete_objects(["reviews/a.webp"])  # 예외를 올리지 않는다
+
+
+@pytest.mark.parametrize("key, value", [
+    ("S3_ENDPOINT", "NEED_TO_SET"),
+    ("S3_ACCESS_KEY", "NEED_TO_SET"),
+    ("S3_SECRET_KEY", "YOUR_SECRET"),
+    ("S3_BUCKET", "NEED_TO_SET"),
+])
+def test_placeholder_values_are_not_configured(s3_config, monkeypatch, key, value):
+    """.env.example 값을 그대로 쓰면 조회는 url null, 업로드는 503이다(500이 아니다)."""
+    monkeypatch.setitem(s3_config.config, key, value)
+    assert storage_client.is_configured() is False
+    assert storage_client.object_url("reviews/a.webp") is None
+    with pytest.raises(BusinessException) as e:
+        storage_client.put_object("reviews/a.webp", b"x", "image/webp")
+    assert e.value.error_code == ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE
+
+
+def test_invalid_endpoint_is_storage_unavailable(s3_config, monkeypatch):
+    """boto3가 거부하는 엔드포인트 형식도 500 대신 설정 오류로 처리한다."""
+    monkeypatch.setitem(s3_config.config, "S3_ENDPOINT", "not a url")
+    assert storage_client.object_url("reviews/a.webp") is None
+    with pytest.raises(BusinessException) as e:
+        storage_client.put_object("reviews/a.webp", b"x", "image/webp")
+    assert e.value.error_code == ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE

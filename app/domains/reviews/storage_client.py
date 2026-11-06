@@ -9,6 +9,7 @@ from botocore.config import Config as BotoConfig
 from botocore.exceptions import BotoCoreError, ClientError
 from flask import current_app
 
+from app.core.config import is_placeholder
 from app.core.errors import BusinessException, ErrorCode
 
 # kakao_client.TIMEOUT(5초), tour client(timeout=10)와 같이 짧게 둔다. botocore 기본값은 60초다.
@@ -25,9 +26,17 @@ _EXTENSION_KEY = "review_storage_client"
 
 
 def is_configured() -> bool:
-    """버킷과 접근 키가 모두 설정되어 있는지 확인한다."""
+    """버킷과 접근 키가 모두 설정되어 있는지 확인한다.
+
+    .env.example을 복사한 채 남은 자리표시 값(NEED_TO_SET 등)은 설정되지 않은 것으로 본다.
+    S3_ENDPOINT는 비어 있어도 되지만(AWS S3), 자리표시 값이면 boto3가 ValueError를 내므로 함께 거른다.
+    """
     config = current_app.config
-    return bool(config.get("S3_BUCKET") and config.get("S3_ACCESS_KEY") and config.get("S3_SECRET_KEY"))
+    required = [config.get(key) for key in ("S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY")]
+    if not all(value and not is_placeholder(str(value)) for value in required):
+        return False
+    endpoint = config.get("S3_ENDPOINT")
+    return not (endpoint and is_placeholder(str(endpoint)))
 
 
 def _client():
@@ -44,18 +53,23 @@ def _client():
     client = current_app.extensions.get(_EXTENSION_KEY)
     if client is None:
         config = current_app.config
-        client = boto3.client(
-            "s3",
-            endpoint_url=config.get("S3_ENDPOINT") or None,
-            region_name=config.get("S3_REGION") or None,
-            aws_access_key_id=config["S3_ACCESS_KEY"],
-            aws_secret_access_key=config["S3_SECRET_KEY"],
-            config=BotoConfig(
-                connect_timeout=CONNECT_TIMEOUT,
-                read_timeout=READ_TIMEOUT,
-                retries={"total_max_attempts": MAX_ATTEMPTS, "mode": "standard"},
-            ),
-        )
+        try:
+            client = boto3.client(
+                "s3",
+                endpoint_url=config.get("S3_ENDPOINT") or None,
+                region_name=config.get("S3_REGION") or None,
+                aws_access_key_id=config["S3_ACCESS_KEY"],
+                aws_secret_access_key=config["S3_SECRET_KEY"],
+                config=BotoConfig(
+                    connect_timeout=CONNECT_TIMEOUT,
+                    read_timeout=READ_TIMEOUT,
+                    retries={"total_max_attempts": MAX_ATTEMPTS, "mode": "standard"},
+                ),
+            )
+        except ValueError:
+            # 잘못된 S3_ENDPOINT 형식 등. 조회는 url null, 업로드는 503으로 처리되도록 설정 오류로 바꾼다.
+            current_app.logger.error("리뷰 이미지 저장소 클라이언트 생성 실패", exc_info=True)
+            raise BusinessException(ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE) from None
         current_app.extensions[_EXTENSION_KEY] = client
     return client
 
@@ -110,6 +124,6 @@ def object_url(key: str) -> str | None:
             Params={"Bucket": current_app.config["S3_BUCKET"], "Key": key},
             ExpiresIn=PRESIGNED_EXPIRES,
         )
-    except (BotoCoreError, ClientError):
+    except (BusinessException, BotoCoreError, ClientError):
         current_app.logger.warning("리뷰 이미지 URL 생성 실패: key=%s", key, exc_info=True)
         return None
