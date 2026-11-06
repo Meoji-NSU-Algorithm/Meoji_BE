@@ -24,6 +24,10 @@ _MYSQL_DUP_ENTRY = 1062
 # 업로드 후 이 시간 안에 리뷰에 붙지 않으면 정리한다. 작성 화면에 머무는 시간보다 넉넉하게 둔다.
 UNATTACHED_UPLOAD_TTL = timedelta(hours=24)
 
+# 사용자당 리뷰에 아직 붙이지 않은 업로드 최대 개수. 리뷰 한 개의 최대 장수(images.MAX_REVIEW_IMAGES=5)의
+# 4배로, 작성 화면을 몇 번 오가며 사진을 바꿔도 막히지 않을 만큼 둔다.
+MAX_UNATTACHED_UPLOADS = 20
+
 # 한 번에 정리하는 최대 개수. 정리 중 잡는 행 잠금이 길어지지 않게 나눠서 지운다.
 _CLEANUP_BATCH = 50
 
@@ -104,6 +108,8 @@ def upload_image(file_storage, user_id: int) -> dict:
     if file_storage is None or not file_storage.filename:
         raise BusinessException(ErrorCode.COMMON_INVALID_INPUT, extra={"errors": {"image": ["이미지 파일이 필요합니다."]}})
 
+    _ensure_upload_quota(user_id)
+
     # 변환을 먼저 끝내 이미지가 아닌 파일로는 저장소 설정 오류까지 가지 않게 한다.
     key, data = prepare_review_image(file_storage)
 
@@ -114,6 +120,27 @@ def upload_image(file_storage, user_id: int) -> dict:
     storage_client.put_object(key, data, "image/webp")
 
     return {"key": key, "url": storage_client.object_url(key)}
+
+
+def _ensure_upload_quota(user_id: int) -> None:
+    """리뷰에 아직 붙지 않은 이 사용자의 업로드가 MAX_UNATTACHED_UPLOADS개 미만인지 확인한다.
+
+    정리 대상(UNATTACHED_UPLOAD_TTL 경과)은 곧 지워지므로 세지 않는다. 동시 업로드로 한도를 몇 장 넘길 수는
+    있지만, 반복 업로드로 저장소를 무한히 채우는 것을 막는 것이 목적이라 잠금은 걸지 않는다.
+
+    Raises:
+        BusinessException: 한도에 이르렀으면 REVIEW_IMAGE_UPLOAD_LIMIT(429).
+    """
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - UNATTACHED_UPLOAD_TTL
+    pending = db.session.scalar(
+        select(func.count()).select_from(ReviewImageUpload).where(
+            ReviewImageUpload.user_id == user_id,
+            ReviewImageUpload.created_at >= since,
+        )
+    )
+
+    if pending >= MAX_UNATTACHED_UPLOADS:
+        raise BusinessException(ErrorCode.REVIEW_IMAGE_UPLOAD_LIMIT)
 
 
 def _claim_uploads(keys, user_id: int) -> None:
@@ -388,6 +415,22 @@ def get_rating_map(event_ids) -> dict[int, dict]:
     }
 
 
+def _get_review_for_write(review_id: int) -> Review | None:
+    """수정·삭제할 리뷰를 행 잠금(SELECT ... FOR UPDATE)으로 읽는다.
+
+    같은 리뷰의 수정·삭제가 동시에 오면 뒤 요청이 앞 요청의 커밋을 기다린 뒤 최신 상태를 읽는다.
+    그래서 수정끼리는 앞 수정이 반영된 images를 기준으로 비교하고(빠진 사진 정리 누락 방지),
+    삭제 뒤의 수정은 0행 UPDATE(StaleDataError, 500) 대신 REVIEW_NOT_FOUND가 된다.
+    populate_existing은 세션에 남은 이전 값 대신 잠금 뒤 읽은 값으로 객체를 갱신한다.
+    """
+    return db.session.scalar(
+        select(Review)
+        .where(Review.id == review_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
 def update_review(review_id: int, user_id: int, data: dict) -> Review:
     """본인 리뷰에서 data에 있는 rating/content/images만 수정한다. images는 목록 전체를 교체한다.
 
@@ -396,7 +439,7 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
             다른 리뷰에 이미 붙은 이미지면 REVIEW_IMAGE_ALREADY_ATTACHED,
             새로 붙이는 이미지가 직접 올린 미첨부 이미지가 아니면 REVIEW_IMAGE_NOT_UPLOADED.
     """
-    review = db.session.get(Review, review_id)
+    review = _get_review_for_write(review_id)
 
     if review is None:
         raise BusinessException(ErrorCode.REVIEW_NOT_FOUND)
@@ -436,7 +479,7 @@ def delete_review(review_id: int, user_id: int) -> Review:
     Raises:
         BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN.
     """
-    review = db.session.get(Review, review_id)
+    review = _get_review_for_write(review_id)
 
     if review is None:
         raise BusinessException(ErrorCode.REVIEW_NOT_FOUND)

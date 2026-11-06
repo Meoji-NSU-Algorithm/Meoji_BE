@@ -1,7 +1,7 @@
 """웹서버 프로세스 안에서 1시간 주기로 리뷰에 붙지 않은 업로드 이미지를 정리하는 스케줄러.
 
 정리를 업로드 요청 밖에서 돌려, 저장소가 느려도 사용자의 업로드 응답이 늦어지지 않게 한다.
-한 번에 service._CLEANUP_BATCH개까지만 지우므로, 다 지우지 못한 업로드는 다음 주기에 이어서 정리된다.
+한 주기에 service._CLEANUP_BATCH개씩 최대 MAX_BATCHES_PER_RUN번 지우고, 남은 업로드는 다음 주기에 이어서 정리한다.
 """
 
 from threading import Event, Lock, Thread
@@ -10,6 +10,24 @@ from app.domains.reviews.service import cleanup_unattached_uploads
 
 
 CLEANUP_INTERVAL_SECONDS = 60 * 60
+
+# 한 주기에 반복하는 최대 배치 수. 배치당 _CLEANUP_BATCH(50)개라 한 주기에 최대 1000개를 지운다.
+MAX_BATCHES_PER_RUN = 20
+
+
+def run_cleanup_until_empty() -> int:
+    """정리 대상이 남아 있으면 배치를 반복해 지운 파일 수의 합을 반환한다.
+
+    한 배치에서 지운 파일이 없으면(대상 없음, 저장소 실패, 리뷰에 붙은 key뿐) 멈춘다.
+    저장소가 계속 실패할 때 같은 key를 붙잡고 반복하지 않게 하고, 남은 것은 다음 주기에 이어서 처리한다.
+    """
+    total = 0
+    for _ in range(MAX_BATCHES_PER_RUN):
+        deleted = cleanup_unattached_uploads()
+        if not deleted:
+            break
+        total += deleted
+    return total
 
 
 class UploadCleanupScheduler:
@@ -44,7 +62,7 @@ class UploadCleanupScheduler:
             try:
                 # 요청 밖 스레드라 앱 컨텍스트를 직접 열고, 대기 전에 닫아 DB 연결을 점유하지 않는다.
                 with app.app_context():
-                    deleted = cleanup_unattached_uploads()
+                    deleted = run_cleanup_until_empty()
                     if deleted:
                         app.logger.info("미첨부 리뷰 이미지 정리: %d개 삭제", deleted)
             except Exception:

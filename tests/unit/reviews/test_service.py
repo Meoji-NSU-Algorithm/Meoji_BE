@@ -305,3 +305,35 @@ def test_create_race_with_images_maps_to_already_exists(user, event, monkeypatch
     # 롤백으로 업로드 기록이 되살아나 다시 첨부할 수 있다
     db.session.expire_all()
     assert db.session.get(ReviewImageUpload, key) is not None
+
+
+# ---------- 점검 보고서 L3·L4: 수정·삭제 경합 ----------
+def test_update_after_concurrent_delete_is_not_found(user, event, make_review):
+    """다른 요청이 먼저 삭제를 커밋했으면 수정은 500(StaleDataError)이 아니라 REVIEW_NOT_FOUND다."""
+    from sqlalchemy import text
+
+    review = make_review(user, event)
+    with db.engine.begin() as conn:
+        conn.execute(text("DELETE FROM review WHERE id = :id"), {"id": review.id})
+
+    with pytest.raises(BusinessException) as e:
+        service.update_review(review.id, user.id, {"content": "수정"})
+    assert code_of(e) == ErrorCode.REVIEW_NOT_FOUND
+
+
+def test_update_reads_images_committed_by_concurrent_update(user, event, make_review, monkeypatch):
+    """세션에 남은 옛 images가 아니라 잠금 뒤 최신 images와 비교해, 앞 수정이 붙인 사진도 정리 대상에 넣는다."""
+    from sqlalchemy import text
+
+    review = make_review(user, event)
+    review.images  # 세션에 images=None 상태를 올려 둔다
+    key = "reviews/" + "c" * 32 + ".webp"
+    with db.engine.begin() as conn:
+        conn.execute(text("UPDATE review SET images = :images WHERE id = :id"),
+                     {"images": f'["{key}"]', "id": review.id})
+
+    removed = []
+    monkeypatch.setattr(service, "_delete_unreferenced_images", lambda keys: removed.extend(keys))
+    service.update_review(review.id, user.id, {"images": []})
+
+    assert removed == [key]

@@ -112,6 +112,9 @@ class ErrorCode(Enum):
     # 새로 붙이는 key가 이 사용자가 올린 미첨부 업로드가 아닌 경우.
     # 업로드한 적 없는 key, 남이 올린 key, 24시간이 지나 정리된 key가 해당한다.
     REVIEW_IMAGE_NOT_UPLOADED = (400, "직접 올린 이미지만 첨부할 수 있습니다. 이미지를 다시 올려주세요.")
+    # 리뷰에 붙이지 않은 업로드가 사용자당 한도(reviews.service.MAX_UNATTACHED_UPLOADS)에 이른 경우.
+    # 정리 속도보다 빠르게 업로드해 저장소를 채우는 것을 막는다.
+    REVIEW_IMAGE_UPLOAD_LIMIT = (429, "아직 리뷰에 붙이지 않은 이미지가 너무 많습니다. 리뷰를 작성한 뒤 다시 올려주세요.")
     # S3_* 설정 누락이나 저장소 통신 실패. TOUR_API_REQUEST_FAILED처럼 원인은 로그에만 남긴다.
     REVIEW_IMAGE_STORAGE_UNAVAILABLE = (503, "이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
 

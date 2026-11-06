@@ -459,3 +459,82 @@ def test_same_key_attached_twice_rejected_even_if_check_is_bypassed(client, logi
     assert _review(client, headers, make_event().id, [key]).status_code == 201
     response = _review(client, headers, make_event().id, [key])
     assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_NOT_UPLOADED")
+
+
+# ---------- 점검 보고서 L12: 깨진 PNG ----------
+def test_corrupted_png_is_400_not_500(client, login, s3):
+    """CRC가 틀린 PNG는 verify()가 SyntaxError를 던지지만 400 REVIEW_IMAGE_INVALID로 응답한다."""
+    headers, _, _ = login()
+    out = io.BytesIO()
+    Image.new("RGB", (8, 8), "red").save(out, "PNG")
+    raw = bytearray(out.getvalue())
+    idat = raw.index(b"IDAT")
+    length = int.from_bytes(raw[idat - 4:idat], "big")
+    crc = idat + 4 + length
+    raw[crc:crc + 4] = bytes(b ^ 0xFF for b in raw[crc:crc + 4])
+
+    response = _upload(client, headers, file=io.BytesIO(bytes(raw)), name="broken.png")
+
+    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_INVALID")
+
+
+# ---------- 점검 보고서 M2: 미첨부 업로드 한도와 정리 반복 ----------
+def test_upload_limit_for_unattached_images(client, login, make_event, s3, monkeypatch):
+    monkeypatch.setattr(review_service, "MAX_UNATTACHED_UPLOADS", 2)
+    headers, _, _ = login()
+    first = _upload(client, headers).json["data"]["key"]
+    _upload(client, headers)
+
+    response = _upload(client, headers)
+    assert (response.status_code, response.json["code"]) == (429, "REVIEW_IMAGE_UPLOAD_LIMIT")
+
+    # 리뷰에 붙이면 한도가 풀린다
+    _review(client, headers, make_event().id, [first])
+    assert _upload(client, headers).status_code == 201
+
+
+def test_upload_limit_ignores_expired_uploads(client, login, s3, monkeypatch):
+    monkeypatch.setattr(review_service, "MAX_UNATTACHED_UPLOADS", 1)
+    headers, _, _ = login()
+    old = _upload(client, headers).json["data"]["key"]
+    _age(old, 25)
+    assert _upload(client, headers).status_code == 201
+
+
+def test_upload_limit_is_per_user(client, login, s3, monkeypatch):
+    monkeypatch.setattr(review_service, "MAX_UNATTACHED_UPLOADS", 1)
+    a_headers, _, _ = login(kakao_id=8401)
+    b_headers, _, _ = login(kakao_id=8402)
+    _upload(client, a_headers)
+    assert _upload(client, b_headers).status_code == 201
+
+
+def test_scheduler_repeats_batches_until_empty(client, login, s3, monkeypatch):
+    from app.domains.reviews import scheduler
+
+    monkeypatch.setattr(review_service, "_CLEANUP_BATCH", 2)
+    headers, _, _ = login()
+    keys = [_upload(client, headers).json["data"]["key"] for _ in range(5)]
+    for key in keys:
+        _age(key, 25)
+
+    assert scheduler.run_cleanup_until_empty() == 5
+    assert not any(key in s3.objects for key in keys)
+
+
+def test_scheduler_stops_when_storage_keeps_failing(client, login, s3, monkeypatch):
+    from botocore.exceptions import BotoCoreError
+    from app.domains.reviews import scheduler
+
+    headers, _, _ = login()
+    key = _upload(client, headers).json["data"]["key"]
+    _age(key, 25)
+    calls = []
+
+    def fail(**kwargs):
+        calls.append(1)
+        raise BotoCoreError()
+
+    monkeypatch.setattr(s3, "delete_objects", fail)
+    assert scheduler.run_cleanup_until_empty() == 0
+    assert len(calls) == 1

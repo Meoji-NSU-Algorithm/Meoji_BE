@@ -8,6 +8,7 @@ DB에는 저장소 키(`reviews/<uuid>.webp`)만 저장하고 URL은 응답 시�
 
 import io
 import re
+import struct
 import uuid
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -71,7 +72,11 @@ def convert_to_webp(raw: bytes) -> bytes:
         return out.getvalue()
     except BusinessException:
         raise
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as error:
+    # verify()는 깨진 PNG(CRC 불일치·잘린 청크)에서 SyntaxError, EOFError, struct.error를 그대로 던진다.
+    except (
+        UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError,
+        SyntaxError, EOFError, struct.error,
+    ) as error:
         raise BusinessException(ErrorCode.REVIEW_IMAGE_INVALID) from error
 
 
