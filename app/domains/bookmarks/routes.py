@@ -28,7 +28,7 @@ def create():
     return jsonify(CommonResponse.success(response_data)), 201 if created else 200
 
 
-@bookmark_bp.route("/my", methods=["GET"])
+@bookmark_bp.route("", methods=["GET"])
 @jwt_required()
 def get_my():
     """로그인한 사용자 본인의 북마크 목록만 반환한다."""
