@@ -303,44 +303,92 @@ def _with_response_fields(reviews: list[Review]) -> list[Review]:
 
 
 def get_reviews_by_event(event_id: int) -> list[Review]:
-    """행사의 리뷰를 최근 수정순으로 반환한다. 행사 존재 여부는 확인하지 않는다."""
+    """행사의 리뷰를 최근 수정순으로 모두 조회한다."""
+
     reviews = db.session.scalars(
         select(Review)
         .where(Review.event_id == event_id)
-        .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
+        .order_by(
+            Review.updated_at.desc(),
+            Review.created_at.desc(),
+            Review.id.desc(),
+        )
     ).all()
 
     return _with_response_fields(reviews)
 
+def get_paginated_reviews_by_event(
+    event_id: int,
+    page: int = 1,
+    size: int = 20,
+) -> dict:
+    """행사의 리뷰를 최근 수정순으로 페이지 단위 조회한다."""
 
-def get_my_reviews(user_id: int) -> list[dict]:
-    """사용자가 쓴 리뷰를 행사 정보와 함께 최근 수정순으로 반환한다."""
+    # 페이지와 관계없이 전체 리뷰 개수를 조회한다.
+    total_count = db.session.scalar(
+        select(func.count(Review.id)).where(Review.event_id == event_id)
+    )
 
+    # 요청한 페이지에 해당하는 리뷰만 조회한다.
+    reviews = db.session.scalars(
+        select(Review)
+        .where(Review.event_id == event_id)
+        .order_by(
+            Review.updated_at.desc(),
+            Review.created_at.desc(),
+            Review.id.desc(),
+        )
+        .offset((page - 1) * size)
+        .limit(size)
+    ).all()
+
+    return {
+        "total_count": total_count,
+        "page": page,
+        "size": size,
+        "reviews": _with_response_fields(reviews),
+    }
+
+def get_my_reviews(user_id: int, page: int = 1, size: int = 20) -> dict:
+    """사용자가 쓴 리뷰를 행사 정보와 함께 페이지 단위 조회한다."""
+
+    # 사용자가 작성한 전체 리뷰 개수
+    total_count = db.session.scalar(
+        select(func.count(Review.id)).where(Review.user_id == user_id)
+    )
+
+    # 요청한 페이지의 리뷰만 조회
     reviews = db.session.scalars(
         select(Review)
         .where(Review.user_id == user_id)
         .order_by(
             Review.updated_at.desc(),
             Review.created_at.desc(),
-            Review.id.desc()
+            Review.id.desc(),
         )
+        .offset((page - 1) * size)
+        .limit(size)
     ).all()
 
+    # 리뷰가 없어도 페이지 정보는 반환해야 한다.
     if not reviews:
-        return []
+        return {
+            "total_count": total_count,
+            "page": page,
+            "size": size,
+            "reviews": [],
+        }
 
-    # 리뷰에 포함된 행사 ID를 가져온다.
+    # 현재 페이지에 포함된 행사만 조회한다.
     event_ids = [review.event_id for review in reviews]
 
-    # 리뷰에 해당하는 행사 정보를 조회한다.
     events = db.session.scalars(
         select(Event).where(Event.id.in_(event_ids))
     ).all()
 
-    # 행사 ID로 행사 객체를 찾을 수 있도록 구성한다.
     event_map = {event.id: event for event in events}
 
-    # 응답용 작성자(author_info)와 이미지 {key, url}(image_items)을 채운다.
+    # 응답용 작성자 정보와 이미지 URL을 채운다.
     _with_response_fields(reviews)
 
     result = []
@@ -369,7 +417,12 @@ def get_my_reviews(user_id: int) -> list[dict]:
             },
         })
 
-    return result
+    return {
+        "total_count": total_count,
+        "page": page,
+        "size": size,
+        "reviews": result,
+    }
 
 
 def get_rating_info(event_id: int) -> dict:

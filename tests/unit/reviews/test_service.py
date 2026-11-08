@@ -55,7 +55,7 @@ def test_create_same_user_different_event_ok(user, event, make_event):
     other = make_event()
     service.create_review({"user_id": user.id, "event_id": event.id, "rating": 4, "content": "x"})
     service.create_review({"user_id": user.id, "event_id": other.id, "rating": 4, "content": "x"})
-    assert len(service.get_my_reviews(user.id)) == 2
+    assert len(service.get_my_reviews(user.id)["reviews"]) == 2
 
 
 def test_create_different_user_same_event_ok(user, event, make_user):
@@ -148,12 +148,26 @@ def test_my_reviews_only_own_and_ordered(make_user, make_event, make_review):
     old = make_review(me, e1, created_at=t(2026, 1, 1), updated_at=t(2026, 1, 1))
     new = make_review(me, e2, created_at=t(2026, 1, 1), updated_at=t(2026, 2, 1))
     make_review(other, e1)
-    assert [r["id"] for r in service.get_my_reviews(me.id)] == [new.id, old.id]
+    result = service.get_my_reviews(me.id)
+
+    assert result["total_count"] == 2
+    assert [r["id"] for r in result["reviews"]] == [new.id, old.id]
 
 
 def test_my_reviews_empty(user):
-    assert service.get_my_reviews(user.id) == []
-    assert service.get_my_reviews(9999) == []
+    assert service.get_my_reviews(user.id) == {
+        "total_count": 0,
+        "page": 1,
+        "size": 20,
+        "reviews": [],
+    }
+
+    assert service.get_my_reviews(9999) == {
+        "total_count": 0,
+        "page": 1,
+        "size": 20,
+        "reviews": [],
+    }
 
 
 # ---------- rating info ----------
@@ -337,3 +351,73 @@ def test_update_reads_images_committed_by_concurrent_update(user, event, make_re
     service.update_review(review.id, user.id, {"images": []})
 
     assert removed == [key]
+
+# ---------- pagination ----------
+
+def test_paginated_reviews_by_event_first_page(
+    make_user, event, make_review
+):
+    # 행사 리뷰 25개 생성
+    for _ in range(25):
+        make_review(make_user(), event)
+
+    result = service.get_paginated_reviews_by_event(event.id)
+
+    assert result["total_count"] == 25
+    assert result["page"] == 1
+    assert result["size"] == 20
+    assert len(result["reviews"]) == 20
+
+
+def test_paginated_reviews_by_event_second_page(
+    make_user, event, make_review
+):
+    for _ in range(25):
+        make_review(make_user(), event)
+
+    result = service.get_paginated_reviews_by_event(
+        event.id,
+        page=2,
+        size=20,
+    )
+
+    assert result["total_count"] == 25
+    assert result["page"] == 2
+    assert result["size"] == 20
+    assert len(result["reviews"]) == 5
+
+
+def test_paginated_reviews_by_event_empty(event):
+    result = service.get_paginated_reviews_by_event(event.id)
+
+    assert result == {
+        "total_count": 0,
+        "page": 1,
+        "size": 20,
+        "reviews": [],
+    }
+
+
+def test_paginated_my_reviews(
+    user, make_event, make_review
+):
+    # 한 사용자가 서로 다른 행사에 리뷰 25개 작성
+    for _ in range(25):
+        make_review(user, make_event())
+
+    result = service.get_my_reviews(
+        user.id,
+        page=2,
+        size=20,
+    )
+
+    assert result["total_count"] == 25
+    assert result["page"] == 2
+    assert result["size"] == 20
+    assert len(result["reviews"]) == 5
+
+    # 내 리뷰 응답에는 행사 정보도 포함되어야 한다.
+    for review in result["reviews"]:
+        assert "event" in review
+        assert "title" in review["event"]
+

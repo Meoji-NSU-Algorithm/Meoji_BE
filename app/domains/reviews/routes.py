@@ -11,6 +11,8 @@ from app.domains.reviews.schemas import (
     ReviewCreateSchema,
     ReviewUpdateSchema,
     ReviewResponseSchema,
+    ReviewListQuerySchema,
+    ReviewListResponseSchema,
     EventRatingResponseSchema,
     ReviewImageResponseSchema,
 )
@@ -53,15 +55,19 @@ def create_review():
 @review_bp.get("/event/<int:event_id>")
 @jwt_required()
 def list_event_reviews(event_id):
-    """행사의 리뷰 목록을 최근 수정순으로 반환한다.
+    """행사의 리뷰 목록을 페이지 단위로 반환한다."""
 
-    GET /api/reviews/event/<event_id>. JWT 필요. 리뷰가 없거나 행사가 없어도 200과 빈 목록.
-    """
-    result = review_service.get_reviews_by_event(event_id)
+    query = ReviewListQuerySchema().load(request.args)
+
+    result = review_service.get_paginated_reviews_by_event(
+        event_id,
+        page=query["page"],
+        size=query["size"],
+    )
 
     return jsonify(
         CommonResponse.success(
-            ReviewResponseSchema(many=True).dump(result)
+            ReviewListResponseSchema().dump(result)
         )
     ), 200
 
@@ -89,17 +95,21 @@ def get_event_rating(event_id):
 @review_bp.get("/my")
 @jwt_required()
 def list_my_reviews():
-    """로그인한 사용자가 쓴 리뷰를 최근 수정순으로 행사 정보와 함께 반환한다.
+    """로그인한 사용자의 리뷰를 페이지 단위로 반환한다."""
 
-    GET /api/reviews/my. 성공 시 200, 리뷰가 없으면 빈 목록.
-    """
     user_id = int(get_jwt_identity())
 
-    result = review_service.get_my_reviews(user_id)
+    query = ReviewListQuerySchema().load(request.args)
+
+    result = review_service.get_my_reviews(
+        user_id,
+        page=query["page"],
+        size=query["size"],
+    )
 
     return jsonify(
         CommonResponse.success(
-            ReviewResponseSchema(many=True).dump(result)
+            ReviewListResponseSchema().dump(result)
         )
     ), 200
 

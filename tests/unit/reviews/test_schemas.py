@@ -6,8 +6,14 @@ import pytest
 from marshmallow import ValidationError
 
 from app.domains.reviews.schemas import (
-    EventRatingResponseSchema, ReviewCreateSchema, ReviewResponseSchema, ReviewUpdateSchema,
+    EventRatingResponseSchema,
+    ReviewCreateSchema,
+    ReviewListQuerySchema,
+    ReviewResponseSchema,
+    ReviewUpdateSchema,
 )
+
+from werkzeug.datastructures import MultiDict
 
 
 def valid(**kw):
@@ -167,3 +173,59 @@ def test_images_rejects_duplicate_keys():
     with pytest.raises(ValidationError) as e:
         ReviewUpdateSchema().load({"images": [key, key]})
     assert "images" in e.value.messages
+
+# ---------- 리뷰 목록 페이지네이션 쿼리 검증 ----------
+
+def test_review_list_query_default_values():
+    result = ReviewListQuerySchema().load({})
+    assert result == {"page": 1, "size": 20}
+
+
+def test_review_list_query_custom_values():
+    result = ReviewListQuerySchema().load({"page": "2", "size": "10"})
+    assert result == {"page": 2, "size": 10}
+
+
+@pytest.mark.parametrize("page", [0, -1, "abc", "1.5"])
+def test_review_list_query_invalid_page(page):
+    with pytest.raises(ValidationError) as e:
+        ReviewListQuerySchema().load({"page": page})
+
+    assert "page" in e.value.messages
+
+
+@pytest.mark.parametrize("size", [0, -1, 51, "abc", "1.5"])
+def test_review_list_query_invalid_size(size):
+    with pytest.raises(ValidationError) as e:
+        ReviewListQuerySchema().load({"size": size})
+
+    assert "size" in e.value.messages
+
+
+def test_review_list_query_max_size_accepted():
+    result = ReviewListQuerySchema().load({"size": "50"})
+    assert result["size"] == 50
+
+
+def test_review_list_query_duplicate_parameter_rejected():
+    query = MultiDict([
+        ("page", "1"),
+        ("page", "2"),
+        ("size", "20"),
+    ])
+
+    with pytest.raises(ValidationError) as e:
+        ReviewListQuerySchema().load(query)
+
+    assert "page" in e.value.messages
+
+
+def test_review_list_query_unknown_parameter_rejected():
+    with pytest.raises(ValidationError):
+        ReviewListQuerySchema().load({
+            "page": "1",
+            "size": "20",
+            "unknown": "value",
+        })
+
+

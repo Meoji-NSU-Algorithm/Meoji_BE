@@ -58,6 +58,35 @@ def _images_field():
         ],
     )
 
+class ReviewListQuerySchema(Schema):
+    """리뷰 목록 페이지네이션 쿼리."""
+
+    page = fields.Integer(
+        load_default=1,
+        validate=validate.Range(min=1, max=2_147_483_647),
+    )
+
+    size = fields.Integer(
+        load_default=20,
+        validate=validate.Range(min=1, max=50),
+    )
+
+    @pre_load
+    def validate_duplicate_query(self, data, **kwargs):
+        """같은 쿼리 파라미터가 반복되면 거부한다."""
+        if hasattr(data, "getlist"):
+            duplicates = {
+                key: ["같은 파라미터는 한 번만 입력해주세요."]
+                for key in data
+                if len(data.getlist(key)) != 1
+            }
+
+            if duplicates:
+                raise ValidationError(duplicates)
+
+            return data.to_dict()
+
+        return data
 
 class ReviewCreateSchema(Schema):
     """리뷰 작성 요청 본문."""
@@ -143,6 +172,13 @@ class ReviewResponseSchema(Schema):
     updated_at = UtcDateTime()
     event = fields.Nested(ReviewEventResponseSchema)
 
+class ReviewListResponseSchema(Schema):
+    """페이지네이션이 적용된 리뷰 목록 응답."""
+
+    total_count = fields.Integer()
+    page = fields.Integer()
+    size = fields.Integer()
+    reviews = fields.List(fields.Nested(ReviewResponseSchema))
 
 class EventRatingResponseSchema(Schema):
     """행사의 평균 평점 응답. 리뷰가 없으면 average_rating과 review_count가 0이다."""
