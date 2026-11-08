@@ -35,9 +35,6 @@ class Config:
     # 한국관광공사 TourAPI 인증 키
     TOURAPI_KEY = os.environ.get("TOURAPI_KEY")
 
-    # 공연예술통합전산망(KOPIS) 인증 키
-    KOPIS_API_KEY = os.environ.get("KOPIS_API_KEY")
-
     # ODSAY API 인증 키
     ODSAY_API_KEY = os.getenv("ODSAY_API_KEY")
 
@@ -67,7 +64,7 @@ class Config:
     MAX_CONTENT_LENGTH = 11 * 1024 * 1024
 
 
-# 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY, KOPIS_API_KEY는 선택이라 제외한다.
+# 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.
 REQUIRED_CONFIG_KEYS = (
     "JWT_SECRET_KEY",
     "KAKAO_CLIENT_ID",
