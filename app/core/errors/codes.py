@@ -64,6 +64,13 @@ class ErrorCode(Enum):
     # traceback은 로그에만 남기고 다음 주기에 다시 시도한다.
     TOUR_SYNC_SCHEDULE_FAILED = (500, "정기 축제 갱신 중 오류가 발생했습니다.")
 
+    # --- KOPIS ---
+    # 공연예술통합전산망 공연 수집. 건별 저장 오류는 TOUR_SYNC_* 코드를 같이 쓴다.
+    KOPIS_API_KEY_MISSING = (500, "KOPIS_API_KEY가 설정되지 않았습니다.")
+    KOPIS_REQUEST_FAILED = (502, "KOPIS API 요청에 실패했습니다.")
+    KOPIS_INVALID_RESPONSE = (502, "KOPIS API 응답이 올바르지 않습니다.")
+    KOPIS_SYNC_INCOMPLETE = (500, "공연 데이터를 모두 갱신하지 못했습니다.")
+
     # --- AUTH ---
     # 원인을 세분화하지 않은 일반 인증 실패. 토큰이 없는 경우에도 사용한다.
     AUTH_UNAUTHORIZED = (401, "인증에 실패했습니다.")
