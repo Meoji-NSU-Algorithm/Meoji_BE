@@ -22,6 +22,64 @@ ODSAY_TRANSIT_URL = (
 TIMEOUT = 10
 
 
+def raise_odsay_error(result: dict, provider: str) -> None:
+    """ODsay 응답 본문에 오류가 있으면 원인에 맞는 예외를 발생시킨다."""
+
+    error = result.get("error")
+
+    # 오류 정보가 없으면 정상 응답이므로 종료한다.
+    if not error:
+        return
+
+    # 오류 정보는 리스트 또는 딕셔너리 형태로 올 수 있다.
+    first = error[0] if isinstance(error, list) and error else error
+
+    # 첫 번째 오류 정보가 딕셔너리가 아니면 빈 딕셔너리로 처리한다.
+    first = first if isinstance(first, dict) else {}
+
+    code = str(first.get("code", ""))
+    message = str(first.get("message") or first.get("msg") or "")
+
+    # ODsay API 키 인증 실패
+    if "ApiKeyAuthFailed" in message:
+        current_app.logger.error(
+            "%s 키 인증 실패: code=%s message=%s",
+            provider,
+            code,
+            message,
+        )
+        raise BusinessException(
+            ErrorCode.DIRECTIONS_API_AUTH_FAILED
+        ) from None
+
+    # 기존 대중교통 오류 처리 유지
+    if code == "400":
+        raise BusinessException(
+            ErrorCode.ROUTE_NOT_FOUND
+        ) from None
+
+    if code == "401":
+        raise BusinessException(
+            ErrorCode.COMMON_INVALID_INPUT
+        ) from None
+
+    # 기존 도보 오류 처리 유지
+    if code == "403":
+        raise BusinessException(
+            ErrorCode.ROUTE_NOT_FOUND
+        ) from None
+
+    # 그 외 ODsay 오류
+    current_app.logger.warning(
+        "%s 오류 응답: code=%s message=%s",
+        provider,
+        code,
+        message,
+    )
+    raise BusinessException(
+        ErrorCode.DIRECTIONS_API_ERROR
+    ) from None
+
 
 def get_json(url, *, params, provider, headers=None, on_http_error=None):
     """외부 API를 호출하고 JSON 응답을 반환한다."""

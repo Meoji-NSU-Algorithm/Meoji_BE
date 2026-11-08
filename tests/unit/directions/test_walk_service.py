@@ -133,6 +133,34 @@ def test_error_body_currently_maps_to_502(keys, fake_get, event, departure):
 
     assert code_of(exc) == ErrorCode.DIRECTIONS_API_ERROR
 
+@pytest.mark.parametrize(
+    "error_body",
+    [
+        {
+            "error": [
+                {
+                    "code": "500",
+                    "message": "[ApiKeyAuthFailed] ApiKey authentication failed.",
+                }
+            ]
+        },
+        {
+            "error": {
+                "code": "500",
+                "message": "[ApiKeyAuthFailed] ApiKey authentication failed.",
+            }
+        },
+    ],
+)
+def test_api_key_auth_failed_maps_to_auth_error(
+    keys, fake_get, event, departure, error_body
+):
+    fake_get(error_body)
+
+    with pytest.raises(BusinessException) as exc:
+        call(event, departure)
+
+    assert code_of(exc) == ErrorCode.DIRECTIONS_API_AUTH_FAILED
 
 @pytest.mark.parametrize(
     "body",
@@ -155,8 +183,6 @@ def test_unusable_route_maps_to_404(keys, fake_get, event, departure, body):
 
     assert code_of(exc) == ErrorCode.ROUTE_NOT_FOUND
 
-
-
 def test_non_dict_guide_does_not_crash():
     assert build_walk_steps({"guides": ["x"], "routes": []}) == []
 
@@ -167,3 +193,24 @@ def test_non_dict_path_does_not_crash(keys, fake_get, event, departure):
 
     with pytest.raises(BusinessException):
         call(event, departure)
+
+def test_api_key_auth_failed_logs_error_without_api_key(
+    keys, fake_get, event, departure, caplog
+):
+
+    fake_get({
+        "error": [{
+            "code": "500",
+            "message": "[ApiKeyAuthFailed] ApiKey authentication failed.",
+        }]
+    })
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(BusinessException):
+            call(event, departure)
+
+    assert "ODsay 도보 키 인증 실패" in caplog.text
+    assert "500" in caplog.text
+    assert "ApiKeyAuthFailed" in caplog.text
+    assert "odsay-test-key" not in caplog.text
+    assert "searchWalkPathV2" not in caplog.text

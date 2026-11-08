@@ -164,35 +164,8 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
     if not isinstance(result, dict):
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
-    # ODsay 오류 응답이 있는지 확인한다.
-    error = result.get("error")
-
-    if error:
-        # 오류 응답이 리스트 또는 딕셔너리인지 확인한다.
-        first = error[0] if isinstance(error, list) and error else error
-
-        # 오류 코드 추출
-        code = (
-            str(first.get("code", ""))
-            if isinstance(first, dict)
-            else ""
-        )
-
-        # 오류 코드 로그 출력
-        current_app.logger.warning(
-            "ODsay 대중교통 오류 응답: code=%s", code
-        )
-
-        # 검색 데이터가 없으면 경로 없음으로 처리한다.
-        if code == "400":
-            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND) from None
-
-        # 필수 파라미터 누락 및 형식 오류
-        if code == "401":
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT) from None
-
-        # 나머지 오류는 외부 API 오류로 처리한다.
-        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR) from None
+    # ODsay 오류 응답을 공통 클라이언트에서 처리한다.
+    client.raise_odsay_error(result, "ODsay 대중교통")
 
     result_data = result.get("result")
     paths = result_data.get("paths") if isinstance(result_data, dict) else None

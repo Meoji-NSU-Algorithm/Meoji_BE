@@ -131,23 +131,8 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
     if not isinstance(result, dict):
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
-    # ODsay 오류 응답을 확인한다.
-    error = result.get("error")
-
-    if error:
-        # 오류 응답이 리스트인지 확인한다.
-        if isinstance(error, list):
-            error_code = (
-                error[0].get("code")
-                if error and isinstance(error[0], dict)
-                else None
-            )
-
-            # 출도착 좌표가 동일한 경우 경로 없음으로 처리한다.
-            if error_code == "403":
-                raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
-
-        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+    # ODsay 오류 응답을 공통 클라이언트에서 처리한다.
+    client.raise_odsay_error(result, "ODsay 도보")
 
     result_data = result.get("result")
     paths = result_data.get("path") if isinstance(result_data, dict) else None

@@ -164,6 +164,34 @@ def test_transport_and_error_body_map_to_502(keys, fake_get, event, departure, k
 
     assert code_of(exc) == ErrorCode.DIRECTIONS_API_ERROR
 
+@pytest.mark.parametrize(
+    "error_body",
+    [
+        {
+            "error": [
+                {
+                    "code": "500",
+                    "message": "[ApiKeyAuthFailed] ApiKey authentication failed.",
+                }
+            ]
+        },
+        {
+            "error": {
+                "code": "500",
+                "message": "[ApiKeyAuthFailed] ApiKey authentication failed.",
+            }
+        },
+    ],
+)
+def test_api_key_auth_failed_maps_to_auth_error(
+    keys, fake_get, event, departure, error_body
+):
+    fake_get(error_body)
+
+    with pytest.raises(BusinessException) as exc:
+        call(event, departure)
+
+    assert code_of(exc) == ErrorCode.DIRECTIONS_API_AUTH_FAILED
 
 @pytest.mark.parametrize(
     "body",
@@ -191,3 +219,24 @@ def test_step_with_non_numeric_duration_can_be_serialized():
     step = one_step(trafficType=3, duration="abc")
 
     DirectionsStepSchema().dump(step)
+
+def test_api_key_auth_failed_logs_error_without_api_key(
+    keys, fake_get, event, departure, caplog
+):
+    fake_get({
+        "error": [{
+            "code": "500",
+            "message": "[ApiKeyAuthFailed] ApiKey authentication failed.",
+        }]
+    })
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(BusinessException):
+            call(event, departure)
+
+    assert "ODsay 대중교통 키 인증 실패" in caplog.text
+    assert "500" in caplog.text
+    assert "ApiKeyAuthFailed" in caplog.text
+    assert "odsay-test-key" not in caplog.text
+    assert "maasRP" not in caplog.text
+
