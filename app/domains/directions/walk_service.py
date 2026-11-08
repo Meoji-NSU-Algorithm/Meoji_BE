@@ -1,24 +1,54 @@
 
 """ODsay 도보 길찾기 API 호출과 경로 데이터 가공을 담당한다."""
 
-import math
-
 import requests
-from flask import current_app
 from datetime import timedelta
+from flask import current_app
 
 from app.core.errors import BusinessException, ErrorCode
+from app.domains.directions.core.check_function import number_or_none
+
 
 
 def build_walk_steps(route_data):
     """도보 경로의 안내 정보와 연결된 구간을 이동 단계로 변환한다."""
-
     guides = route_data.get("guides", [])
     routes = route_data.get("routes", [])
+
+    # 안내 정보와 경로 정보가 리스트인지 확인한다.
+    if not isinstance(guides, list) or not isinstance(routes, list):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+
+    # 경로 구간의 자료형만 확인한다.
+    # 잘못된 구간은 아래 합산 과정에서 제외한다.
+    # 각 구간의 원래 인덱스를 유지하면서 정상 데이터만 저장한다.
+    valid_routes = []
+
+    for route in routes:
+        if not isinstance(route, dict):
+            valid_routes.append(None)
+            continue
+
+        distance = number_or_none(route.get("distance"))
+        duration = number_or_none(route.get("duration"))
+
+        if distance is None or duration is None:
+            valid_routes.append(None)
+            continue
+
+        valid_routes.append({
+            "distance": distance,
+            "duration": duration,
+        })
+
 
     steps = []
 
     for index, guide in enumerate(guides):
+        # 안내 항목이 딕셔너리가 아니면 건너뛴다.
+        if not isinstance(guide, dict):
+            continue
+
         guidance = guide.get("guidance")
         route_index = guide.get("routeIndex")
 
@@ -32,10 +62,13 @@ def build_walk_steps(route_data):
         ):
             continue
 
-        # 다음 안내 지점 직전까지의 경로 구간을 합산한다.
+        # 다음 안내 지점 직전까지의 경로 구간을 확인한다.
         next_index = len(routes)
 
         for next_guide in guides[index + 1:]:
+            if not isinstance(next_guide, dict):
+                continue
+
             next_route_index = next_guide.get("routeIndex")
 
             if (
@@ -46,21 +79,11 @@ def build_walk_steps(route_data):
                 next_index = next_route_index
                 break
 
-        section_routes = routes[route_index:next_index]
+        # 해당 안내 구간에 포함되는 정상 경로만 합산한다.
+        section_routes = valid_routes[route_index:next_index]
 
-        distance = sum(
-            route["distance"]
-            for route in section_routes
-            if isinstance(route.get("distance"), (int, float))
-            and not isinstance(route.get("distance"), bool)
-        )
-
-        duration = sum(
-            route["duration"]
-            for route in section_routes
-            if isinstance(route.get("duration"), (int, float))
-            and not isinstance(route.get("duration"), bool)
-        )
+        distance = sum(route["distance"] for route in section_routes if route is not None)
+        duration = sum(route["duration"] for route in section_routes if route is not None)
 
         steps.append({
             "step_number": len(steps) + 1,
@@ -79,9 +102,9 @@ def build_walk_steps(route_data):
     return steps
 
 
+
 def get_walk_directions(event, origin_lat, origin_lng, departure_time):
     """ODsay 도보 길찾기 API를 호출하고 추천 경로를 반환한다."""
-
     api_key = current_app.config.get("ODSAY_API_KEY")
 
     if not api_key:
@@ -91,6 +114,7 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
 
     params = {
         "apiKey": api_key,
+        "lang": 0,
         "opt": "reco",
         "loc": (
             f"{origin_lng},{origin_lat},"
@@ -113,7 +137,22 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
     if not isinstance(result, dict):
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
-    if result.get("error"):
+    # ODsay 오류 응답을 확인한다.
+    error = result.get("error")
+
+    if error:
+        # 오류 응답이 리스트인지 확인한다.
+        if isinstance(error, list):
+            error_code = (
+                error[0].get("code")
+                if error and isinstance(error[0], dict)
+                else None
+            )
+
+            # 출도착 좌표가 동일한 경우 경로 없음으로 처리한다.
+            if error_code == "403":
+                raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
     result_data = result.get("result")
@@ -123,6 +162,9 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
     path = paths[0]
+
+    if not isinstance(path, dict):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
     if not path.get("hasPathResult"):
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
@@ -137,19 +179,10 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
     if not isinstance(summary, dict):
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
-    distance = summary.get("distance")
-    duration = summary.get("duration")
+    distance = number_or_none(summary.get("distance"))
+    duration = number_or_none(summary.get("duration"))
 
-    if (
-        not isinstance(distance, (int, float))
-        or isinstance(distance, bool)
-        or not math.isfinite(distance)
-        or distance < 0
-        or not isinstance(duration, (int, float))
-        or isinstance(duration, bool)
-        or not math.isfinite(duration)
-        or duration < 0
-    ):
+    if distance is None or duration is None:
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
     arrival_time = departure_time + timedelta(seconds=duration)

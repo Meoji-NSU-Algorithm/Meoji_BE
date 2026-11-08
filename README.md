@@ -61,11 +61,12 @@ app/
 │  ├─ db.py  time.py  공용 TimestampMixin, KST 상수
 │  └─ errors/         ErrorCode, BusinessException, 전역 에러 핸들러
 └─ domains/
-   ├─ auth/     routes  service  kakao_client  token_service  models  schemas
-   ├─ users/    routes  service  models  schemas
-   ├─ events/   routes  service  models  schemas
-   ├─ reviews/  routes  service  models  schemas
-   └─ tour/     client  sync_service  state_service  scheduler  models
+   ├─ auth/       routes  service  kakao_client  token_service  models  schemas
+   ├─ users/      routes  service  models  schemas
+   ├─ events/     routes  service  models  schemas
+   ├─ direcions/  routes  service  schemas  car_service  transit_service  walk_service
+   ├─ reviews/    routes  service  models  schemas
+   └─ tour/       client  sync_service  state_service  scheduler  models
 tests/
 ├─ conftest.py   전용 MySQL 테스트 DB 생성/삭제
 ├─ unit/<도메인>/  도메인별 단위 테스트

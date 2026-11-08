@@ -156,18 +156,12 @@ def test_unusable_route_maps_to_404(keys, fake_get, event, departure, body):
     assert code_of(exc) == ErrorCode.ROUTE_NOT_FOUND
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AttributeError,
-    reason="이슈 3: guides 원소가 dict가 아니면 AttributeError(500). 외부 응답 형식 방어 필요.",
-)
+
 def test_non_dict_guide_does_not_crash():
     assert build_walk_steps({"guides": ["x"], "routes": []}) == []
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AttributeError,
-    reason="이슈 3: paths[0]이 dict인지 확인하지 않아 AttributeError(500).",
-)
+
 def test_non_dict_path_does_not_crash(keys, fake_get, event, departure):
     fake_get({"result": {"path": ["x"]}})
 

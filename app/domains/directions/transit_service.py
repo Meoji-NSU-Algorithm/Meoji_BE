@@ -1,22 +1,34 @@
 
 """ODsay 대중교통 길찾기 API 호출과 경로 데이터 가공을 담당한다."""
 
-import math
 from datetime import datetime, timedelta
 
 import requests
 from flask import current_app
 
+from app.domains.directions.core.check_function import number_or_none
 from app.core.errors import BusinessException, ErrorCode
 from app.core.time import KST
 
 
 def build_transit_steps(path):
     """ODsay 응답에서 도보·버스·지하철 이동 단계를 추출한다."""
+    if not isinstance(path, dict):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+
+    rps = path.get("rps", [])
+
+    # 이동 단계 목록이 리스트인지 확인한다.
+    if not isinstance(rps, list):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
     steps = []
 
-    for part in path.get("rps", []):
+    for part in rps:
+        # 각 이동 단계가 딕셔너리가 아니면 건너뛴다.
+        if not isinstance(part, dict):
+            continue
+
         traffic_type = part.get("trafficType")
 
         if traffic_type == 1:
@@ -28,9 +40,14 @@ def build_transit_steps(path):
         else:
             step_type = "OTHER"
 
-        distance = part.get("distance")
-        duration = part.get("duration")
+        distance = number_or_none(part.get("distance"))
+        duration = number_or_none(part.get("duration"))
+
+        # lane이 리스트가 아니면 빈 리스트로 처리한다.
         lanes = part.get("lane") or []
+
+        if not isinstance(lanes, list):
+            lanes = []
 
         details = []
         start_name = part.get("startName")
@@ -75,11 +92,16 @@ def build_transit_steps(path):
             elif end_name:
                 instruction += f": {end_name} 하차"
 
-            stations = (
-                part.get("passStopList") or {}
-            ).get("stations", [])
+            # passStopList가 딕셔너리인지 확인한다.
+            pass_stop_list = part.get("passStopList")
 
-            if stations:
+            stations = (
+                pass_stop_list.get("stations", [])
+                if isinstance(pass_stop_list, dict)
+                else []
+            )
+
+            if isinstance(stations, list) and stations:
                 details.append(f"경유 정류장 정보 {len(stations)}개")
 
         elif step_type == "WALK":
@@ -111,7 +133,6 @@ def build_transit_steps(path):
 
 def get_transit_directions(event, origin_lat, origin_lng, departure_time):
     """ODsay 대중교통 길찾기 API를 호출하고 결과를 반환한다."""
-
     api_key = current_app.config.get("ODSAY_API_KEY")
 
     if not api_key:
@@ -144,7 +165,34 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
     if not isinstance(result, dict):
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
-    if result.get("error"):
+    # ODsay 오류 응답이 있는지 확인한다.
+    error = result.get("error")
+
+    if error:
+        # 오류 응답이 리스트 또는 딕셔너리인지 확인한다.
+        first = error[0] if isinstance(error, list) and error else error
+
+        # 오류 코드 추출
+        code = (
+            str(first.get("code", ""))
+            if isinstance(first, dict)
+            else ""
+        )
+
+        # 오류 코드 로그 출력
+        current_app.logger.warning(
+            "ODsay 대중교통 오류 응답: code=%s", code
+        )
+
+        # 검색 데이터가 없으면 경로 없음으로 처리한다.
+        if code == "400":
+            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
+        # 필수 파라미터 누락 및 형식 오류
+        if code == "401":
+            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+
+        # 나머지 오류는 외부 API 오류로 처리한다.
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
     result_data = result.get("result")
@@ -163,19 +211,10 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
 
     path = transit_paths[0]
 
-    duration = path.get("totalTime")
-    distance = path.get("totalDistance")
+    duration = number_or_none(path.get("totalTime"))
+    distance = number_or_none(path.get("totalDistance"))
 
-    if (
-        not isinstance(duration, (int, float))
-        or isinstance(duration, bool)
-        or not math.isfinite(duration)
-        or duration < 0
-        or not isinstance(distance, (int, float))
-        or isinstance(distance, bool)
-        or not math.isfinite(distance)
-        or distance < 0
-    ):
+    if duration is None or distance is None:
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
     arrival_time = path.get("endDateTime")

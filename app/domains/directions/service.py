@@ -52,3 +52,4 @@ def get_directions(event_id, query):
         return walk_service.get_walk_directions(event, origin_lat, origin_lng, departure_time)
 
     raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+

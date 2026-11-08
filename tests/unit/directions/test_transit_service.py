@@ -182,10 +182,6 @@ def test_unusable_route_maps_to_404(keys, fake_get, event, departure, body):
     assert code_of(exc) == ErrorCode.ROUTE_NOT_FOUND
 
 
-@pytest.mark.xfail(
-    strict=True, raises=ValueError,
-    reason="이슈 3: step의 duration/distance를 검증하지 않아 문자열이 오면 응답 dump에서 500.",
-)
 def test_step_with_non_numeric_duration_can_be_serialized():
     step = one_step(trafficType=3, duration="abc")
 

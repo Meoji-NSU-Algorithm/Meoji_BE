@@ -33,14 +33,8 @@ class DirectionsStepSchema(Schema):
     step_number = fields.Integer(data_key="stepNumber")
     type = fields.String()
     instruction = fields.String()
-    duration_minutes = fields.Float(
-        data_key="durationMinutes",
-        allow_none=True,
-    )
-    distance_meters = fields.Float(
-        data_key="distanceMeters",
-        allow_none=True,
-    )
+    duration_minutes = fields.Float(data_key="durationMinutes", allow_none=True)
+    distance_meters = fields.Float(data_key="distanceMeters", allow_none=True)
     detail = fields.Raw(allow_none=True)
 
 

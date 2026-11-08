@@ -1,49 +1,53 @@
 
 """카카오 자동차 길찾기 API 호출과 경로 데이터 가공을 담당한다."""
 
-import math
 from datetime import timedelta
 
 import requests
 from flask import current_app
 
 from app.core.errors import BusinessException, ErrorCode
-
+from app.domains.directions.core.check_function import number_or_none
 
 def build_car_steps(route):
     """카카오 응답에서 자동차 이동 단계를 추출한다."""
+    if not isinstance(route, dict):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+
+    sections = route.get("sections", [])
+
+    if not isinstance(sections, list):
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
     steps = []
 
-    for section in route.get("sections", []):
-        for guide in section.get("guides", []):
+    for section in sections:
+        # section이 딕셔너리가 아니면 건너뛴다.
+        if not isinstance(section, dict):
+            continue
+
+        guides = section.get("guides", [])
+
+        # guides가 리스트가 아니면 해당 구간을 건너뛴다.
+        if not isinstance(guides, list):
+            continue
+
+        for guide in guides:
+            # guide가 딕셔너리가 아니면 건너뛴다.
+            if not isinstance(guide, dict):
+                continue
+
             guidance = guide.get("guidance")
 
             if not guidance:
                 continue
 
-            distance = guide.get("distance")
-            duration = guide.get("duration")
+            distance = number_or_none(guide.get("distance"))
+            duration = number_or_none(guide.get("duration"))
 
-            if (
-                not isinstance(distance, (int, float))
-                or isinstance(distance, bool)
-                or not math.isfinite(distance)
-                or distance < 0
-            ):
-                distance = None
-            else:
-                distance = round(distance)
+            distance = round(distance) if distance is not None else None
 
-            if (
-                not isinstance(duration, (int, float))
-                or isinstance(duration, bool)
-                or not math.isfinite(duration)
-                or duration < 0
-            ):
-                duration_minutes = None
-            else:
-                duration_minutes = round(duration / 60)
+            duration_minutes = (round(duration / 60) if duration is not None else None)
 
             steps.append({
                 "step_number": len(steps) + 1,
@@ -59,7 +63,6 @@ def build_car_steps(route):
 
 def get_car_directions(event, origin_lat, origin_lng, departure_time):
     """카카오 자동차 길찾기 API를 호출하고 결과를 반환한다."""
-
     api_key = current_app.config.get("KAKAO_CLIENT_ID")
 
     if not api_key:
@@ -86,6 +89,29 @@ def get_car_directions(event, origin_lat, origin_lng, departure_time):
     except requests.Timeout:
         raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT)
 
+    except requests.HTTPError as error:
+        error_response = error.response
+
+        try:
+            error_data = (
+                error_response.json()
+                if error_response is not None
+                else {}
+            )
+        except ValueError:
+            error_data = {}
+
+        error_code = (
+            error_data.get("code")
+            if isinstance(error_data, dict)
+            else None
+        )
+
+        if error_code == -2:
+            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+
     except (requests.RequestException, ValueError):
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
@@ -96,27 +122,26 @@ def get_car_directions(event, origin_lat, origin_lng, departure_time):
 
     route = routes[0]
 
-    if not isinstance(route, dict) or route.get("result_code") != 0:
+    if not isinstance(route, dict):
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
+    result_code = route.get("result_code")
+
+    if result_code == 104:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
+    if result_code != 0:
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
 
     summary = route.get("summary")
 
     if not isinstance(summary, dict):
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
-    duration = summary.get("duration")
-    distance = summary.get("distance")
+    duration = number_or_none(summary.get("duration"))
+    distance = number_or_none(summary.get("distance"))
 
-    if (
-        not isinstance(duration, (int, float))
-        or isinstance(duration, bool)
-        or not math.isfinite(duration)
-        or duration < 0
-        or not isinstance(distance, (int, float))
-        or isinstance(distance, bool)
-        or not math.isfinite(distance)
-        or distance < 0
-    ):
+    if duration is None or distance is None:
         raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
 
     arrival_time = departure_time + timedelta(seconds=duration)
