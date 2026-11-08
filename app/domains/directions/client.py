@@ -22,6 +22,7 @@ ODSAY_TRANSIT_URL = (
 TIMEOUT = 10
 
 
+
 def get_json(url, *, params, provider, headers=None, on_http_error=None):
     """외부 API를 호출하고 JSON 응답을 반환한다."""
 
@@ -47,14 +48,23 @@ def get_json(url, *, params, provider, headers=None, on_http_error=None):
         ) from None
 
     except requests.HTTPError as error:
-        # 서비스별 HTTP 오류 처리가 필요한 경우 콜백에 위임한다.
+        # URL이나 예외 원문을 기록하지 않고 HTTP 상태 코드만 기록한다.
+        status = (
+            error.response.status_code
+            if error.response is not None
+            else None
+        )
+
+        current_app.logger.warning(
+            "%s 길찾기 API HTTP 오류: status=%s",
+            provider,
+            status,
+        )
+
+        # 카카오 등 서비스별 HTTP 오류 처리가 필요한 경우 위임한다.
         if on_http_error is not None:
             on_http_error(error)
 
-        current_app.logger.warning(
-            "%s 길찾기 API HTTP 오류",
-            provider,
-        )
         raise BusinessException(
             ErrorCode.DIRECTIONS_API_ERROR
         ) from None

@@ -185,14 +185,14 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
 
         # 검색 데이터가 없으면 경로 없음으로 처리한다.
         if code == "400":
-            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+            raise BusinessException(ErrorCode.ROUTE_NOT_FOUND) from None
 
         # 필수 파라미터 누락 및 형식 오류
         if code == "401":
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
+            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT) from None
 
         # 나머지 오류는 외부 API 오류로 처리한다.
-        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR) from None
 
     result_data = result.get("result")
     paths = result_data.get("paths") if isinstance(result_data, dict) else None
