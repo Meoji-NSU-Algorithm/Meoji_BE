@@ -3,11 +3,38 @@
 
 from datetime import timedelta
 
-import requests
 from flask import current_app
 
 from app.core.errors import BusinessException, ErrorCode
+from app.domains.directions import client
 from app.domains.directions.core.check_function import number_or_none
+
+
+def handle_kakao_http_error(error):
+    """카카오 API HTTP 오류 코드를 확인한다."""
+
+    error_response = error.response
+
+    try:
+        error_data = (
+            error_response.json()
+            if error_response is not None
+            else {}
+        )
+    except ValueError:
+        error_data = {}
+
+    error_code = (
+        error_data.get("code")
+        if isinstance(error_data, dict)
+        else None
+    )
+
+    if error_code == -2:
+        raise BusinessException(
+            ErrorCode.COMMON_INVALID_INPUT
+        ) from None
+
 
 def build_car_steps(route):
     """카카오 응답에서 자동차 이동 단계를 추출한다."""
@@ -68,9 +95,7 @@ def get_car_directions(event, origin_lat, origin_lng, departure_time):
     if not api_key:
         raise BusinessException(ErrorCode.DIRECTIONS_API_KEY_MISSING)
 
-    url = "https://apis-navi.kakaomobility.com/v1/directions"
-
-    params = {
+    url_params = {
         "origin": f"{origin_lng},{origin_lat}",
         "destination": f"{float(event.longitude)},{float(event.latitude)}",
     }
@@ -79,41 +104,13 @@ def get_car_directions(event, origin_lat, origin_lng, departure_time):
         "Authorization": f"KakaoAK {api_key}",
     }
 
-    try:
-        response = requests.get(
-            url, params=params, headers=headers, timeout=10
-        )
-        response.raise_for_status()
-        result = response.json()
-
-    except requests.Timeout:
-        raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT)
-
-    except requests.HTTPError as error:
-        error_response = error.response
-
-        try:
-            error_data = (
-                error_response.json()
-                if error_response is not None
-                else {}
-            )
-        except ValueError:
-            error_data = {}
-
-        error_code = (
-            error_data.get("code")
-            if isinstance(error_data, dict)
-            else None
-        )
-
-        if error_code == -2:
-            raise BusinessException(ErrorCode.COMMON_INVALID_INPUT)
-
-        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
-
-    except (requests.RequestException, ValueError):
-        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+    result = client.get_json(
+        client.KAKAO_DIRECTIONS_URL,
+        params=url_params,
+        headers=headers,
+        provider="카카오 자동차",
+        on_http_error=handle_kakao_http_error,
+    )
 
     routes = result.get("routes") if isinstance(result, dict) else None
 

@@ -64,7 +64,7 @@ def test_route_values_that_are_not_numbers_are_ignored_in_sums():
 
     steps = build_walk_steps({"guides": [guide("직진", 0)], "routes": routes})
 
-    assert (steps[0]["distance_meters"], steps[0]["duration_minutes"]) == (50, 0.5)
+    assert (steps[0]["distance_meters"], steps[0]["duration_minutes"]) == (50, 0)
 
 
 def test_success_builds_summary(keys, fake_get, event, departure):

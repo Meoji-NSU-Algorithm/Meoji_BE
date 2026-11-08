@@ -1,13 +1,13 @@
 
 """ODsay 도보 길찾기 API 호출과 경로 데이터 가공을 담당한다."""
 
-import requests
 from datetime import timedelta
+
 from flask import current_app
 
 from app.core.errors import BusinessException, ErrorCode
+from app.domains.directions import client
 from app.domains.directions.core.check_function import number_or_none
-
 
 
 def build_walk_steps(route_data):
@@ -89,8 +89,8 @@ def build_walk_steps(route_data):
             "step_number": len(steps) + 1,
             "type": "WALK",
             "instruction": guidance,
-            "duration_minutes": round(duration / 60, 1),
-            "distance_meters": distance,
+            "duration_minutes": (round(duration / 60) if duration is not None else None),
+            "distance_meters": (round(distance) if distance is not None else None),
             "detail": {
                 "point": guide.get("point"),
                 "angle": guide.get("angle"),
@@ -110,8 +110,6 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
     if not api_key:
         raise BusinessException(ErrorCode.DIRECTIONS_API_KEY_MISSING)
 
-    url = "https://api.odsay.com/v1/api/searchWalkPathV2"
-
     params = {
         "apiKey": api_key,
         "lang": 0,
@@ -123,16 +121,12 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
         "output": "json",
     }
 
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        result = response.json()
-
-    except requests.Timeout:
-        raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT)
-
-    except (requests.RequestException, ValueError):
-        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+    # 공통 클라이언트를 통해 ODsay 도보 API를 호출한다.
+    result = client.get_json(
+        client.ODSAY_WALK_URL,
+        params=params,
+        provider="ODsay 도보",
+    )
 
     if not isinstance(result, dict):
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
@@ -192,7 +186,7 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
         "mode": "walk",
         "departure_time": departure_time.isoformat(),
         "duration_minutes": round(duration / 60),
-        "distance_meters": distance,
+        "distance_meters": round(distance),
         "arrival_time": arrival_time.isoformat(),
         "steps": build_walk_steps(route_data),
     }

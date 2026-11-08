@@ -3,12 +3,12 @@
 
 from datetime import datetime, timedelta
 
-import requests
 from flask import current_app
 
-from app.domains.directions.core.check_function import number_or_none
 from app.core.errors import BusinessException, ErrorCode
 from app.core.time import KST
+from app.domains.directions import client
+from app.domains.directions.core.check_function import number_or_none
 
 
 def build_transit_steps(path):
@@ -49,7 +49,9 @@ def build_transit_steps(path):
         if not isinstance(lanes, list):
             lanes = []
 
-        details = []
+        # 상세 정보는 객체 또는 None으로 반환한다.
+        detail = {}
+
         start_name = part.get("startName")
         end_name = part.get("endName")
 
@@ -69,11 +71,13 @@ def build_transit_steps(path):
             if part.get("way"):
                 instruction += f" ({part['way']} 방면)"
 
-            if part.get("startExitNo"):
-                details.append(f"출발역 {part['startExitNo']}번 출구")
+            # 출발역 출구 정보
+            if part.get("startExitNo") is not None:
+                detail["startExitNo"] = str(part["startExitNo"])
 
-            if part.get("endExitNo"):
-                details.append(f"도착역 {part['endExitNo']}번 출구")
+            # 도착역 출구 정보
+            if part.get("endExitNo") is not None:
+                detail["endExitNo"] = str(part["endExitNo"])
 
         elif step_type == "BUS":
             bus_numbers = [
@@ -101,8 +105,9 @@ def build_transit_steps(path):
                 else []
             )
 
+            # 경유 정류장 개수를 상세 정보로 저장한다.
             if isinstance(stations, list) and stations:
-                details.append(f"경유 정류장 정보 {len(stations)}개")
+                detail["stopCount"] = len(stations)
 
         elif step_type == "WALK":
             instruction = "도보 이동"
@@ -123,9 +128,9 @@ def build_transit_steps(path):
             "step_number": len(steps) + 1,
             "type": step_type,
             "instruction": instruction,
-            "duration_minutes": duration,
-            "distance_meters": distance,
-            "detail": ", ".join(details) if details else None,
+            "duration_minutes": round(duration) if duration is not None else None,
+            "distance_meters": round(distance) if distance is not None else None,
+            "detail": detail if detail else None,
         })
 
     return steps
@@ -138,8 +143,6 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
     if not api_key:
         raise BusinessException(ErrorCode.DIRECTIONS_API_KEY_MISSING)
 
-    url = "https://api.odsay.com/v1/api/maasRP"
-
     params = {
         "SX": origin_lng,
         "SY": origin_lat,
@@ -151,16 +154,12 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
         "output": "json",
     }
 
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        result = response.json()
-
-    except requests.Timeout:
-        raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT)
-
-    except (requests.RequestException, ValueError):
-        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
+    # 공통 클라이언트를 통해 ODsay 대중교통 API를 호출한다.
+    result = client.get_json(
+        client.ODSAY_TRANSIT_URL,
+        params=params,
+        provider="ODsay 대중교통",
+    )
 
     if not isinstance(result, dict):
         raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR)
@@ -235,8 +234,8 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
         "event_id": event.id,
         "mode": "transit",
         "departure_time": departure_time.isoformat(),
-        "duration_minutes": duration,
-        "distance_meters": distance,
+        "duration_minutes": round(duration),
+        "distance_meters": round(distance),
         "arrival_time": arrival_time,
         "steps": build_transit_steps(path),
     }

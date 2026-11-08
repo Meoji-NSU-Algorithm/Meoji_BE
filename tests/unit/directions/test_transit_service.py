@@ -36,7 +36,10 @@ def test_subway_step():
 
     assert step["type"] == "SUBWAY"
     assert step["instruction"] == "2호선 탑승, 강남역 하차 (잠실 방면)"
-    assert step["detail"] == "출발역 3번 출구, 도착역 5번 출구"
+    assert step["detail"] == {
+        "startExitNo": "3",
+        "endExitNo": "5",
+    }
     assert (step["duration_minutes"], step["distance_meters"]) == (20, 5000)
 
 
@@ -50,7 +53,9 @@ def test_bus_step():
 
     assert step["type"] == "BUS"
     assert step["instruction"] == "400, 401번 버스 이용: A 승차 → B 하차"
-    assert step["detail"] == "경유 정류장 정보 3개"
+    assert step["detail"] == {
+        "stopCount": 3,
+    }
 
 
 @pytest.mark.parametrize(
