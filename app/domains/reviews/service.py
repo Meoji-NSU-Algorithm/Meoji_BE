@@ -178,23 +178,28 @@ def get_my_reviews(user_id: int) -> list[Review]:
 
 def get_rating_info(event_id: int) -> dict:
     """행사의 평균 평점(소수 첫째 자리 반올림)과 리뷰 개수를 반환한다. 리뷰가 없으면 모두 0이다."""
-    result = db.session.execute(
-        select(func.avg(Review.rating), func.count(Review.id))
-        .where(Review.event_id == event_id)
-    ).first()
+    return get_rating_map([event_id])[event_id]
 
-    average_rating = result[0]
-    review_count = result[1]
 
-    if average_rating is None:
-        average_rating = 0
-    else:
-        average_rating = round(float(average_rating), 1)
+def get_rating_map(event_ids) -> dict[int, dict]:
+    """여러 행사의 평균 평점과 리뷰 개수를 쿼리 한 번으로 구한다. 목록 카드와 상세가 같은 규칙을 쓴다.
 
-    return {
-        "average_rating": average_rating,
-        "review_count": review_count,
-    }
+    Returns:
+        {event_id: {"average_rating", "review_count"}}. 리뷰가 없는 행사도 0.0, 0으로 들어 있다.
+    """
+    ratings = {event_id: {"average_rating": 0.0, "review_count": 0} for event_id in event_ids}
+
+    if ratings:
+        rows = db.session.execute(
+            select(Review.event_id, func.avg(Review.rating), func.count(Review.id))
+            .where(Review.event_id.in_(ratings))
+            .group_by(Review.event_id)
+        )
+
+        for event_id, average, count in rows:
+            ratings[event_id] = {"average_rating": round(float(average), 1), "review_count": count}
+
+    return ratings
 
 
 def update_review(review_id: int, user_id: int, data: dict, files=()) -> Review:
