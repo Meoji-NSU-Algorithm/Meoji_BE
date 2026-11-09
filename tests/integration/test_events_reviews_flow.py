@@ -95,9 +95,8 @@ def test_monthly_top(client, refs, make_event):
 
 
 def test_event_detail_and_view_count(client, refs, make_event, login):
-    """상세 조회수는 사용자마다 하루 한 번만 오르고 DB에 반영된다."""
+    """상세 조회마다 view_count가 오르고 DB에 반영된다."""
     h, _, _ = login()
-    other, _, _ = login(kakao_id=1002)
     event = make_event(title="상세행사", description="설명")
     eid = event.id
     first = client.get(f"/api/events/{eid}", headers=h)
@@ -105,8 +104,7 @@ def test_event_detail_and_view_count(client, refs, make_event, login):
     data = first.get_json()["data"]
     assert data["id"] == eid and data["title"] == "상세행사" and data["description"] == "설명"
     assert data["reviews"] == [] and data["review_count"] == 0 and data["average_rating"] == 0
-    client.get(f"/api/events/{eid}", headers=h)  # 같은 사용자의 재조회는 세지 않는다
-    client.get(f"/api/events/{eid}", headers=other)
+    client.get(f"/api/events/{eid}", headers=h)
     db.session.remove()  # REPEATABLE READ 스냅샷을 버리고 새로 읽는다
     assert db.session.get(Event, eid).view_count == 2
     today = datetime.now(KST).date()

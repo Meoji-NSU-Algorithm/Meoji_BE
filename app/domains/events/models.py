@@ -94,15 +94,3 @@ class EventDailyView(db.Model):
     event_id = db.Column(db.Integer, db.ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
     view_date = db.Column(db.Date, primary_key=True, index=True)
     view_count = db.Column(db.Integer, nullable=False, default=0)
-
-
-class EventUserDailyView(db.Model):
-    """사용자가 그날 이미 센 행사 조회. 같은 사용자의 반복 조회로 조회수가 부풀지 않게 한다.
-
-    (사용자, 행사, 날짜)마다 한 행이고, 지난 날짜의 행은 그 사용자가 다음에 조회할 때 지운다.
-    """
-
-    __tablename__ = "event_user_daily_views"
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), primary_key=True)
-    event_id = db.Column(db.Integer, db.ForeignKey("events.id", ondelete="CASCADE"), primary_key=True, index=True)
-    view_date = db.Column(db.Date, primary_key=True)
