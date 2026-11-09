@@ -3,6 +3,8 @@
 작성자 권한(본인 확인)을 여기서 검사하며, 실패는 BusinessException으로 올린다.
 """
 
+import json
+
 from app.core.extensions import db
 from app.domains.events.models import Event
 from app.domains.reviews.models import Review
@@ -85,6 +87,29 @@ def upload_image(file_storage) -> str:
     return upload_review_image(file_storage)
 
 
+def _keys_in_other_reviews(keys, *exclude) -> set[str]:
+    """keys 중 다른 리뷰가 쓰고 있는 key. exclude로 자기 리뷰를 뺀다(예: Review.id != review.id)."""
+    keys = set(keys)
+
+    if not keys:
+        return set()
+
+    # MySQL 8.0.17+ JSON_OVERLAPS: images 배열에 keys 중 하나라도 있는 리뷰
+    rows = db.session.scalars(
+        select(Review.images).where(func.json_overlaps(Review.images, json.dumps(sorted(keys))), *exclude)
+    )
+
+    return keys & {key for images in rows for key in images or []}
+
+
+def image_keys_to_delete_on_withdraw(user_id: int) -> set[str]:
+    """탈퇴로 지울 이미지 key. 다른 사용자 리뷰가 쓰는 key는 남긴다. 리뷰가 지워지기 전에 호출한다."""
+    rows = db.session.scalars(select(Review.images).where(Review.user_id == user_id))
+    keys = {key for images in rows for key in images or []}
+
+    return keys - _keys_in_other_reviews(keys, Review.user_id != user_id)
+
+
 def _is_duplicate_entry(error: IntegrityError) -> bool:
     """IntegrityError가 MySQL unique 위반(errno 1062)인지 확인한다."""
     args = getattr(error.orig, "args", ())
@@ -159,7 +184,8 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
     # 빠진 이미지는 커밋이 성공한 뒤에 저장소에서 지운다. 커밋 전에 지우면 실패 시 리뷰가 없는 파일을 가리킨다.
     removed_images = []
     if "images" in data:
-        removed_images = [key for key in (review.images or []) if key not in data["images"]]
+        removed_images = {key for key in (review.images or []) if key not in data["images"]}
+        removed_images -= _keys_in_other_reviews(removed_images, Review.id != review.id)
         review.images = data["images"]
 
     db.session.commit()
@@ -182,9 +208,13 @@ def delete_review(review_id: int, user_id: int) -> Review:
     if review.user_id != user_id:
         raise BusinessException(ErrorCode.REVIEW_FORBIDDEN)
 
+    # 다른 리뷰도 쓰는 이미지는 남긴다.
+    images = set(review.images or [])
+    images -= _keys_in_other_reviews(images, Review.id != review.id)
+
     db.session.delete(review)
     db.session.commit()
     # update_review와 같이 커밋 성공 뒤에 저장소 파일을 지운다.
-    delete_review_images(review.images or [])
+    delete_review_images(images)
 
     return review

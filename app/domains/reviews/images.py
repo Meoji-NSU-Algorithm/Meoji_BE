@@ -28,9 +28,9 @@ MAX_SIDE = 1600
 
 WEBP_QUALITY = 80
 
-# 압축은 작지만 풀면 거대한 이미지(픽셀 폭탄)를 막는다. 넘으면 Pillow가 DecompressionBombError를 낸다.
-# Pillow 전역 설정이라 이 모듈을 import하는 순간 앱 전체에 적용된다.
-Image.MAX_IMAGE_PIXELS = 40_000_000
+# 압축은 작지만 풀면 거대한 이미지(픽셀 폭탄)를 막는다.
+# Pillow의 MAX_IMAGE_PIXELS는 한도의 2배까지 경고만 내므로 헤더 크기로 직접 검사한다.
+MAX_PIXELS = 40_000_000
 
 # 업로드를 받는 형식. 움직이는 GIF는 지원하지 않는다.
 _ACCEPTED_FORMATS = ("JPEG", "PNG", "WEBP")
@@ -52,7 +52,10 @@ def convert_to_webp(raw: bytes) -> bytes:
         # verify()는 파일 구조만 검사하고 이미지를 못 쓰게 만들므로 다시 연다.
         Image.open(io.BytesIO(raw), formats=_ACCEPTED_FORMATS).verify()
         image = Image.open(io.BytesIO(raw), formats=_ACCEPTED_FORMATS)
-        if getattr(image, "is_animated", False):
+        if image.width * image.height > MAX_PIXELS:
+            raise BusinessException(ErrorCode.REVIEW_IMAGE_INVALID, "이미지 해상도가 너무 큽니다.")
+        # 폰 카메라 JPEG는 보조 프레임이 붙은 MPO로 열린다. 움직이는 이미지가 아니므로 첫 프레임만 쓴다.
+        if image.format != "MPO" and getattr(image, "is_animated", False):
             raise BusinessException(ErrorCode.REVIEW_IMAGE_INVALID, "움직이는 이미지는 올릴 수 없습니다.")
 
         # EXIF 회전 정보를 픽셀에 반영한다. 다시 인코딩하면 EXIF가 빠져 폰 사진이 눕기 때문이다.

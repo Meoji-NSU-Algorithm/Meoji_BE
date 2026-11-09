@@ -56,6 +56,9 @@ class Config:
     # 이미지 공개 주소의 앞부분. 비워 두면 1시간짜리 presigned URL을 만든다.
     S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL")
 
+    # 요청 본문 한도. 이미지 한 장 한도(10MB)에 multipart 여유를 더했다. 넘으면 다 받기 전에 413.
+    MAX_CONTENT_LENGTH = 11 * 1024 * 1024
+
 
 # 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.
 REQUIRED_CONFIG_KEYS = (

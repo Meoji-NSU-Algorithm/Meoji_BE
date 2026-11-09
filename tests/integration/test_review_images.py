@@ -4,7 +4,9 @@ import io
 import pytest
 from PIL import Image
 
+from app.core.extensions import db
 from app.domains.reviews import images
+from app.domains.reviews.models import Review
 
 PUBLIC = "http://img.test/review-images"
 
@@ -134,3 +136,38 @@ def test_review_rejects_invalid_images(client, login, make_event, s3, bad):
                            json={"event_id": make_event().id, "rating": 5, "content": "x", "images": bad})
     assert response.status_code == 400
     assert response.json["code"] == "COMMON_INVALID_INPUT"
+
+
+def _review(client, headers, event_id, keys):
+    return client.post("/api/reviews", headers=headers,
+                       json={"event_id": event_id, "rating": 4, "content": "후기", "images": keys})
+
+
+def test_shared_key_survives_delete_and_withdraw(client, login, make_event, s3, monkeypatch):
+    """예전 데이터처럼 두 리뷰가 같은 key를 쓰면 한쪽을 지우거나 탈퇴해도 파일은 남는다."""
+    from app.domains.auth import kakao_client
+
+    monkeypatch.setattr(kakao_client, "unlink_kakao_user", lambda kakao_id: None)
+    a, _, _ = login(kakao_id=8101)
+    b, _, _ = login(kakao_id=8102)
+    shared, own = (_upload(client, a).json["data"]["key"] for _ in range(2))
+    _review(client, a, make_event().id, [shared, own])
+    b1 = _review(client, b, make_event().id, []).json["data"]["id"]
+    b2 = _review(client, b, make_event().id, []).json["data"]["id"]
+    # API로는 만들 수 없는 공유 상태를 DB에 직접 만든다
+    db.session.get(Review, b1).images = [shared]
+    db.session.get(Review, b2).images = [shared]
+    db.session.commit()
+
+    assert client.delete(f"/api/reviews/{b1}", headers=b).status_code == 200
+    assert shared in s3.objects
+
+    assert client.delete("/api/users/me", headers=a).status_code == 200
+    assert own not in s3.objects
+    assert shared in s3.objects
+
+
+def test_request_body_over_limit_is_413(client, login, app, s3):
+    headers, _, _ = login()
+    response = _upload(client, headers, io.BytesIO(b"0" * (app.config["MAX_CONTENT_LENGTH"] + 1)))
+    assert response.status_code == 413

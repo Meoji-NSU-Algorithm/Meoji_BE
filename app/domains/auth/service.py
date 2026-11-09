@@ -6,6 +6,8 @@ kakao_client(카카오 통신), users.service(유저 조회/생성/삭제), toke
 """
 from app.core.errors import BusinessException, ErrorCode
 from app.domains.auth import kakao_client, token_service
+from app.domains.reviews import service as review_service
+from app.domains.reviews.images import delete_review_images
 from app.domains.users import service as user_service
 
 
@@ -61,7 +63,8 @@ def withdraw(user_id: int, access_jti: str) -> None:
 
     refresh token은 따로 폐기하지 않는다. refresh()가 삭제된 유저를 401로 거절하면서 폐기하기 때문이다.
     delete_user는 commit하지 않고 revoke_jti가 commit하므로, 유저 삭제와 토큰 폐기는 한 트랜잭션으로 확정된다.
-    카카오 API는 commit 이후에 호출하며, 실패해도 이미 끝난 탈퇴를 되돌리지 않는다(unlink_kakao_user는 예외를 던지지 않는다).
+    리뷰는 FK CASCADE로 지워지므로 이미지 key는 삭제 전에 읽어 둔다.
+    이미지 삭제와 카카오 API는 commit 이후에 호출하며, 실패해도 이미 끝난 탈퇴를 되돌리지 않는다(둘 다 예외를 던지지 않는다).
 
     Args:
         user_id: 탈퇴할 유저 id (access 토큰의 sub).
@@ -70,7 +73,10 @@ def withdraw(user_id: int, access_jti: str) -> None:
     Raises:
         BusinessException: 유저가 없으면 USER_NOT_FOUND.
     """
+    image_keys = review_service.image_keys_to_delete_on_withdraw(user_id)
     kakao_id = user_service.delete_user(user_id)
     token_service.revoke_jti(access_jti)
+
+    delete_review_images(image_keys)
 
     kakao_client.unlink_kakao_user(kakao_id)
