@@ -8,7 +8,8 @@ import json
 from app.core.extensions import db
 from app.domains.events.models import Event
 from app.domains.reviews.models import Review
-from app.domains.reviews.images import delete_review_images, upload_review_image
+from app.domains.reviews.images import prepare_review_image
+from app.domains.reviews.storage_client import delete_objects, put_object
 from app.domains.users.models import User
 from app.core.errors import BusinessException, ErrorCode
 from sqlalchemy import func, select
@@ -73,18 +74,21 @@ def create_review(data: dict) -> Review:
 def upload_image(file_storage) -> str:
     """리뷰에 붙일 이미지 한 장을 webp로 변환해 저장하고 저장소 key를 반환한다.
 
-    변환과 저장소 통신은 images 모듈이 맡고, 여기서는 요청에 파일이 있는지만 확인한다.
-
     Args:
         file_storage: request.files["image"]. 필드가 없으면 None.
 
     Raises:
-        BusinessException: 파일이 없으면 COMMON_INVALID_INPUT. 그 밖은 upload_review_image 참고.
+        BusinessException: 파일이 없으면 COMMON_INVALID_INPUT, 저장소 오류면 REVIEW_IMAGE_STORAGE_UNAVAILABLE.
+            그 밖은 prepare_review_image 참고.
     """
     if file_storage is None or not file_storage.filename:
         raise BusinessException(ErrorCode.COMMON_INVALID_INPUT, extra={"errors": {"image": ["이미지 파일이 필요합니다."]}})
 
-    return upload_review_image(file_storage)
+    # 변환을 먼저 끝내 이미지가 아닌 파일로는 저장소 설정 오류까지 가지 않게 한다.
+    key, data = prepare_review_image(file_storage)
+    put_object(key, data, "image/webp")
+
+    return key
 
 
 def _keys_in_other_reviews(keys, *exclude) -> set[str]:
@@ -189,7 +193,7 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
         review.images = data["images"]
 
     db.session.commit()
-    delete_review_images(removed_images)
+    delete_objects(removed_images)
 
     return review
 
@@ -215,6 +219,6 @@ def delete_review(review_id: int, user_id: int) -> Review:
     db.session.delete(review)
     db.session.commit()
     # update_review와 같이 커밋 성공 뒤에 저장소 파일을 지운다.
-    delete_review_images(images)
+    delete_objects(images)
 
     return review

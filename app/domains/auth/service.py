@@ -7,7 +7,7 @@ kakao_client(카카오 통신), users.service(유저 조회/생성/삭제), toke
 from app.core.errors import BusinessException, ErrorCode
 from app.domains.auth import kakao_client, token_service
 from app.domains.reviews import service as review_service
-from app.domains.reviews.images import delete_review_images
+from app.domains.reviews.storage_client import delete_objects
 from app.domains.users import service as user_service
 
 
@@ -77,6 +77,6 @@ def withdraw(user_id: int, access_jti: str) -> None:
     kakao_id = user_service.delete_user(user_id)
     token_service.revoke_jti(access_jti)
 
-    delete_review_images(image_keys)
+    delete_objects(image_keys)
 
     kakao_client.unlink_kakao_user(kakao_id)

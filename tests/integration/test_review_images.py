@@ -5,14 +5,14 @@ import pytest
 from PIL import Image
 
 from app.core.extensions import db
-from app.domains.reviews import images
+from app.domains.reviews import images, storage_client
 from app.domains.reviews.models import Review
 
 PUBLIC = "http://img.test/review-images"
 
 
 class FakeS3:
-    """images._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
+    """storage_client._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
 
     def __init__(self):
         self.objects = {}
@@ -29,7 +29,7 @@ class FakeS3:
 def s3(app, monkeypatch):
     # kakao_profiles 픽스처처럼 외부 통신 지점(모듈 속성)만 바꾼다.
     fake = FakeS3()
-    monkeypatch.setattr(images, "_client", lambda: fake)
+    monkeypatch.setattr(storage_client, "_client", lambda: fake)
     monkeypatch.setitem(app.config, "S3_BUCKET", "review-images")
     monkeypatch.setitem(app.config, "S3_PUBLIC_URL", PUBLIC)
     return fake
@@ -170,4 +170,20 @@ def test_shared_key_survives_delete_and_withdraw(client, login, make_event, s3, 
 def test_request_body_over_limit_is_413(client, login, app, s3):
     headers, _, _ = login()
     response = _upload(client, headers, io.BytesIO(b"0" * (app.config["MAX_CONTENT_LENGTH"] + 1)))
-    assert response.status_code == 413
+    # FE errors.ts가 이 코드로 "파일 크기를 줄여 주세요" 문구를 고른다
+    assert (response.status_code, response.json["code"]) == (413, "COMMON_PAYLOAD_TOO_LARGE")
+
+
+def test_review_read_without_storage_config_returns_null_url(client, login, make_event, s3, app, monkeypatch):
+    """저장소 설정이 빠져도 리뷰 조회는 200이고 url만 null이다."""
+    headers, _, _ = login()
+    eid = make_event().id
+    key = _upload(client, headers).json["data"]["key"]
+    _review(client, headers, eid, [key])
+    for name in ("S3_PUBLIC_URL", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
+        monkeypatch.setitem(app.config, name, None)
+
+    response = client.get(f"/api/reviews/event/{eid}", headers=headers)
+    assert response.status_code == 200
+    assert response.json["data"][0]["images"] == [{"key": key, "url": None}]
+

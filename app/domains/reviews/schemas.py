@@ -10,7 +10,8 @@ from marshmallow import (
 )
 
 from app.core.fields import UtcDateTime
-from app.domains.reviews.images import KEY_PATTERN, MAX_REVIEW_IMAGES, image_url
+from app.domains.reviews.images import KEY_PATTERN, MAX_REVIEW_IMAGES
+from app.domains.reviews.storage_client import object_url
 
 CONTENT_MAX_LENGTH = 1000
 CONTENT_LENGTH_MESSAGE = "리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."
@@ -112,14 +113,14 @@ class ReviewResponseSchema(Schema):
 
     def get_images(self, review):
         # 이미지 기능 이전 리뷰(NULL)와 images 속성이 없는 객체는 빈 목록으로 내려준다.
-        return [{"key": key, "url": image_url(key)} for key in (getattr(review, "images", None) or [])]
+        return [{"key": key, "url": object_url(key)} for key in (getattr(review, "images", None) or [])]
 
 
 class ReviewImageResponseSchema(Schema):
     """업로드한 이미지 한 장의 응답({key, url}). ReviewResponseSchema.images 항목과 같은 형식이다."""
 
     key = fields.String()
-    url = fields.Function(lambda obj: image_url(obj["key"]))
+    url = fields.Function(lambda obj: object_url(obj["key"]), allow_none=True)
 
 
 class EventRatingResponseSchema(Schema):

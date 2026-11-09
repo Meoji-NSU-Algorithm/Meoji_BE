@@ -162,6 +162,7 @@ def upload_image():
         COMMON_INVALID_INPUT: image 필드가 없음(400).
         REVIEW_IMAGE_INVALID: 이미지가 아니거나 지원하지 않는 형식(400).
         REVIEW_IMAGE_TOO_LARGE: 원본이 10MB 초과(413).
+        COMMON_PAYLOAD_TOO_LARGE: 요청 본문이 MAX_CONTENT_LENGTH 초과(413).
         REVIEW_IMAGE_STORAGE_UNAVAILABLE: 저장소 설정 누락 또는 통신 실패(503).
     """
     key = review_service.upload_image(request.files.get("image"))
