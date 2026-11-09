@@ -9,10 +9,9 @@ from app.domains.bookmarks.models import Bookmark
 def test_add_duplicate_and_legacy_input(client, login, make_event):
     headers, _, user_id = login()
     event = make_event()
-    # 새로 만들면 201, 이미 있으면(camelCase·legacy 입력 모두) 200이다.
-    for body, status in (({"eventId": event.id}, 201), ({"eventId": event.id}, 200), ({"event_id": event.id}, 200)):
+    for body in ({"eventId": event.id}, {"eventId": event.id}, {"event_id": event.id}):
         response = client.post("/api/bookmarks", json=body, headers=headers)
-        assert response.status_code == status
+        assert response.status_code == 200
         assert response.get_json()["data"] == {"eventId": event.id, "isBookmarked": True}
     assert db.session.query(Bookmark).filter_by(user_id=user_id, event_id=event.id).count() == 1
 
@@ -22,8 +21,8 @@ def test_list_uses_current_event_image(client, login, make_event, is_free, price
     headers, _, _ = login()
     event = make_event(image_url="https://example.test/event.jpg", is_free=is_free)
     assert not hasattr(event, "thumbnail_url")
-    assert client.post("/api/bookmarks", json={"eventId": event.id}, headers=headers).status_code == 201
-    response = client.get("/api/bookmarks", headers=headers)
+    assert client.post("/api/bookmarks", json={"eventId": event.id}, headers=headers).status_code == 200
+    response = client.get("/api/bookmarks/my", headers=headers)
     assert response.status_code == 200
     assert response.get_json()["data"] == {
         "totalCount": 1,
@@ -40,7 +39,7 @@ def test_ownership_and_repeated_delete(client, login, make_event):
     other, _, _ = login(kakao_id=1002)
     event = make_event()
     client.post("/api/bookmarks", json={"eventId": event.id}, headers=owner)
-    assert client.get("/api/bookmarks", headers=other).get_json()["data"] == {
+    assert client.get("/api/bookmarks/my", headers=other).get_json()["data"] == {
         "totalCount": 0, "events": [],
     }
     assert client.delete(f"/api/bookmarks/{event.id}", headers=other).status_code == 200
@@ -49,7 +48,7 @@ def test_ownership_and_repeated_delete(client, login, make_event):
         response = client.delete(f"/api/bookmarks/{event.id}", headers=owner)
         assert response.status_code == 200
         assert response.get_json()["data"] == {"eventId": event.id, "isBookmarked": False}
-    assert client.get("/api/bookmarks", headers=owner).get_json()["data"] == {
+    assert client.get("/api/bookmarks/my", headers=owner).get_json()["data"] == {
         "totalCount": 0, "events": [],
     }
 
@@ -76,19 +75,19 @@ def test_unknown_event(client, login):
 
 def test_missing_user(client, app_ctx):
     token = create_access_token(identity="999999")
-    response = client.get("/api/bookmarks", headers={"Authorization": f"Bearer {token}"})
+    response = client.get("/api/bookmarks/my", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 404
     assert response.get_json()["code"] == "USER_NOT_FOUND"
 
 
 @pytest.mark.parametrize("method,path", [
-    ("post", "/api/bookmarks"), ("get", "/api/bookmarks"), ("delete", "/api/bookmarks/1"),
+    ("post", "/api/bookmarks"), ("get", "/api/bookmarks/my"), ("delete", "/api/bookmarks/1"),
 ])
 def test_requires_login(client, method, path):
     assert getattr(client, method)(path).status_code == 401
 
 
-def test_list_is_served_at_root_and_my_path_is_gone(client, login):
-    headers, _, _ = login()
-    assert client.get("/api/bookmarks", headers=headers).status_code == 200
-    assert client.get("/api/bookmarks/my", headers=headers).status_code == 404
+def test_removed_root_get(client):
+    response = client.get("/api/bookmarks")
+    assert response.status_code == 405
+    assert "POST" in response.headers["Allow"]
