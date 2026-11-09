@@ -82,4 +82,6 @@ def prepare_review_image(file_storage) -> tuple[str, bytes]:
     if len(raw) > MAX_UPLOAD_BYTES:
         raise BusinessException(ErrorCode.REVIEW_IMAGE_TOO_LARGE)
 
+    # key(저장소 파일 이름)는 서버가 랜덤으로 만든다. 사용자가 보낸 파일 이름은 쓰지 않는다.
+    # 사용자가 이름을 정할 수 있으면 남의 파일과 같은 이름으로 덮어쓰거나, 남의 key를 흉내 낼 수 있기 때문이다.
     return f"reviews/{uuid.uuid4().hex}.webp", convert_to_webp(raw)

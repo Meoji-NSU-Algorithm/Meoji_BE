@@ -1,6 +1,13 @@
 """리뷰 생성·조회·수정·삭제와 행사별 평점 집계를 담당한다.
 
 작성자 권한(본인 확인)을 여기서 검사하며, 실패는 BusinessException으로 올린다.
+
+리뷰 사진 key 보호 (이슈 #63):
+    리뷰 조회 응답에는 모든 사람의 사진 key가 그대로 보이므로 key는 비밀이 아니다.
+    대신 클라이언트가 보낸 key를 리뷰에 새로 붙이는 길을 없앴다.
+    - 작성: key를 받지 않는다. 사진 파일만 받고 key는 서버가 새로 만든다(_store_images).
+    - 수정: 클라이언트가 보내는 key는 "남길 기존 사진"뿐이고, 그 리뷰에 원래 있던 key만 허용한다.
+    그래서 남의 key를 알아도 내 리뷰에 붙인 뒤 수정·삭제로 남의 사진 파일을 지울 수 없다.
 """
 
 import json
@@ -8,7 +15,7 @@ import json
 from app.core.extensions import db
 from app.domains.events.models import Event
 from app.domains.reviews.models import Review
-from app.domains.reviews.images import prepare_review_image
+from app.domains.reviews.images import MAX_REVIEW_IMAGES, prepare_review_image
 from app.domains.reviews.storage_client import delete_objects, put_object
 from app.domains.users.models import User
 from app.core.errors import BusinessException, ErrorCode
@@ -19,15 +26,17 @@ from sqlalchemy.exc import IntegrityError
 _MYSQL_DUP_ENTRY = 1062
 
 
-def create_review(data: dict) -> Review:
+def create_review(data: dict, files=()) -> Review:
     """리뷰를 저장해 반환한다.
 
     Args:
         data: user_id, event_id, rating, content.
+        files: 함께 올린 사진(werkzeug FileStorage) 목록. 최대 MAX_REVIEW_IMAGES장.
 
     Raises:
         BusinessException: 사용자가 없으면 USER_NOT_FOUND, 행사가 없으면 EVENT_NOT_FOUND,
-            이미 같은 행사에 리뷰를 썼으면 REVIEW_ALREADY_EXISTS.
+            이미 같은 행사에 리뷰를 썼으면 REVIEW_ALREADY_EXISTS, 사진이 너무 많으면 COMMON_INVALID_INPUT.
+            사진 오류는 _store_images 참고.
     """
     user = db.session.get(User, data["user_id"])
 
@@ -47,21 +56,27 @@ def create_review(data: dict) -> Review:
     if already is not None:
         raise BusinessException(ErrorCode.REVIEW_ALREADY_EXISTS)
 
+    if len(files) > MAX_REVIEW_IMAGES:
+        raise _invalid_images(f"이미지는 최대 {MAX_REVIEW_IMAGES}장까지 첨부할 수 있습니다.")
+
+    # 행사·중복 검사를 먼저 끝내, 거절될 요청으로는 저장소에 올리지 않는다.
+    # 리뷰의 images에는 여기서 서버가 만든 key만 들어간다. 작성 요청에는 key를 적는 필드가 없다
+    # (schemas.ReviewCreateSchema). 그래서 남의 사진 key를 내 리뷰에 붙일 수 없다.
+    keys = _store_images(files)
+
     review = Review(
         user_id=data["user_id"],
         event_id=data["event_id"],
         rating=data["rating"],
         content=data["content"],
-        images=data.get("images", []),
+        images=keys,
     )
 
     db.session.add(review)
 
     try:
-        db.session.commit()
+        _commit_or_delete(keys)
     except IntegrityError as e:
-        db.session.rollback()
-
         # 동시 중복 제출은 unique 위반(1062)으로만 판단하고, FK 위반 등은 그대로 올린다.
         if _is_duplicate_entry(e):
             raise BusinessException(ErrorCode.REVIEW_ALREADY_EXISTS) from e
@@ -71,24 +86,41 @@ def create_review(data: dict) -> Review:
     return review
 
 
-def upload_image(file_storage) -> str:
-    """리뷰에 붙일 이미지 한 장을 webp로 변환해 저장하고 저장소 key를 반환한다.
+def _invalid_images(message: str) -> BusinessException:
+    return BusinessException(ErrorCode.COMMON_INVALID_INPUT, extra={"errors": {"images": [message]}})
 
-    Args:
-        file_storage: request.files["image"]. 필드가 없으면 None.
+
+def _store_images(files) -> list[str]:
+    """새 사진을 webp로 바꿔 저장소에 올리고 key 목록을 돌려준다.
+
+    변환을 모두 끝낸 뒤 올려, 이미지가 아닌 파일이 섞이면 아무것도 올리지 않는다.
+    올리다 실패하면 이미 올린 것을 지우고 예외를 그대로 올린다.
 
     Raises:
-        BusinessException: 파일이 없으면 COMMON_INVALID_INPUT, 저장소 오류면 REVIEW_IMAGE_STORAGE_UNAVAILABLE.
-            그 밖은 prepare_review_image 참고.
+        BusinessException: prepare_review_image, storage_client.put_object 참고.
     """
-    if file_storage is None or not file_storage.filename:
-        raise BusinessException(ErrorCode.COMMON_INVALID_INPUT, extra={"errors": {"image": ["이미지 파일이 필요합니다."]}})
+    prepared = [prepare_review_image(file) for file in files]
+    keys = []
 
-    # 변환을 먼저 끝내 이미지가 아닌 파일로는 저장소 설정 오류까지 가지 않게 한다.
-    key, data = prepare_review_image(file_storage)
-    put_object(key, data, "image/webp")
+    try:
+        for key, data in prepared:
+            put_object(key, data, "image/webp")
+            keys.append(key)
+    except Exception:
+        delete_objects(keys)
+        raise
 
-    return key
+    return keys
+
+
+def _commit_or_delete(new_keys) -> None:
+    """커밋한다. 실패하면 이번 요청에서 올린 사진을 지워 어디에도 붙지 않은 파일이 남지 않게 한다."""
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        delete_objects(new_keys)
+        raise
 
 
 def _keys_in_other_reviews(keys, *exclude) -> set[str]:
@@ -165,11 +197,15 @@ def get_rating_info(event_id: int) -> dict:
     }
 
 
-def update_review(review_id: int, user_id: int, data: dict) -> Review:
-    """본인 리뷰에서 data에 있는 rating/content만 수정한다.
+def update_review(review_id: int, user_id: int, data: dict, files=()) -> Review:
+    """본인 리뷰에서 data에 있는 rating/content/images를 수정하고 files를 사진으로 덧붙인다.
+
+    data["images"]는 남길 기존 사진 key 목록이다. 없으면 기존 사진을 모두 남긴다.
 
     Raises:
-        BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN.
+        BusinessException: 리뷰가 없으면 REVIEW_NOT_FOUND, 작성자가 아니면 REVIEW_FORBIDDEN,
+            이 리뷰에 없는 key를 남기려 하거나 사진이 너무 많으면 COMMON_INVALID_INPUT.
+            사진 오류는 _store_images 참고.
     """
     review = db.session.get(Review, review_id)
 
@@ -179,6 +215,18 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
     if review.user_id != user_id:
         raise BusinessException(ErrorCode.REVIEW_FORBIDDEN)
 
+    current = review.images or []
+    keep = data.get("images", current)
+
+    # 클라이언트가 key를 보낼 수 있는 곳은 여기(남길 사진 목록)뿐이다. 새 사진 key는 서버만 만든다.
+    # 그래서 이 리뷰에 원래 있던 key만 남길 수 있게 하면, 남의 key(응답에서 본 key)를 붙이는 길이 막힌다.
+    # 평점·내용을 바꾸기 전에 검사해, 거절되면 리뷰가 하나도 바뀌지 않는다.
+    if not set(keep) <= set(current):
+        raise _invalid_images("이 리뷰에 없는 이미지는 남길 수 없습니다.")
+
+    if len(keep) + len(files) > MAX_REVIEW_IMAGES:
+        raise _invalid_images(f"이미지는 최대 {MAX_REVIEW_IMAGES}장까지 첨부할 수 있습니다.")
+
     if "rating" in data:
         review.rating = data["rating"]
 
@@ -186,13 +234,17 @@ def update_review(review_id: int, user_id: int, data: dict) -> Review:
         review.content = data["content"]
 
     # 빠진 이미지는 커밋이 성공한 뒤에 저장소에서 지운다. 커밋 전에 지우면 실패 시 리뷰가 없는 파일을 가리킨다.
-    removed_images = []
-    if "images" in data:
-        removed_images = {key for key in (review.images or []) if key not in data["images"]}
-        removed_images -= _keys_in_other_reviews(removed_images, Review.id != review.id)
-        review.images = data["images"]
+    # 다른 리뷰도 쓰는 이미지(예전 데이터)는 남긴다. 조회 실패로 새 사진이 남지 않게 올리기 전에 계산한다.
+    removed_images = set(current) - set(keep)
+    removed_images -= _keys_in_other_reviews(removed_images, Review.id != review.id)
 
-    db.session.commit()
+    new_keys = _store_images(files)
+
+    # 최종 목록 = 원래 있던 key 중 남길 것 + 서버가 방금 만든 key. 다른 출처의 key는 들어갈 수 없다.
+    if "images" in data or new_keys:
+        review.images = list(keep) + new_keys
+
+    _commit_or_delete(new_keys)
     delete_objects(removed_images)
 
     return review

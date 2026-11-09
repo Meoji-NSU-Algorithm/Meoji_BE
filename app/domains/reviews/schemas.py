@@ -39,28 +39,26 @@ def validate_rating(value):
 
 
 def _images_field():
-    """images 필드를 만든다. POST /api/reviews/images가 돌려준 key만 받는다.
-
-    _content_validator()처럼 작성·수정 스키마가 같은 규칙을 쓰도록 함수로 둔다.
-    """
+    """images 필드(수정 시 남길 기존 사진 key)를 만든다. 리뷰에 실제로 붙은 key인지는 서비스가 검사한다."""
     return fields.List(
-        fields.String(validate=validate.Regexp(KEY_PATTERN, error="업로드 API가 발급한 이미지 key가 아닙니다.")),
+        fields.String(validate=validate.Regexp(KEY_PATTERN, error="이미지 key 형식이 아닙니다.")),
         required=False,
         validate=validate.Length(max=MAX_REVIEW_IMAGES, error=f"이미지는 최대 {MAX_REVIEW_IMAGES}장까지 첨부할 수 있습니다."),
     )
 
 
 class ReviewCreateSchema(Schema):
-    """리뷰 작성 요청 본문."""
+    """리뷰 작성 요청 본문.
+
+    images(사진 key) 필드는 일부러 두지 않는다. 사진은 파일로 받고 key는 서버가 만든다(이슈 #63).
+    모르는 필드는 거절되므로 본문에 key를 넣어 보내면 400 COMMON_INVALID_INPUT이다.
+    """
 
     event_id = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
 
     rating = fields.Float(required=True, validate=validate_rating)
 
     content = fields.String(required=True, validate=_content_validator())
-
-    # 생략하면 이미지 없는 리뷰가 된다.
-    images = _images_field()
 
     @pre_load
     def strip_content(self, data, **kwargs):
@@ -75,7 +73,8 @@ class ReviewUpdateSchema(Schema):
 
     content = fields.String(required=False, validate=_content_validator())
 
-    # 보내면 목록 전체를 교체한다. 빈 목록은 이미지를 모두 지운다.
+    # 남길 기존 사진 key. 빠진 사진은 지워지고, 빈 목록이면 모두 지운다. 새 사진은 파일로 따로 보낸다.
+    # 여기 보낸 key가 이 리뷰에 원래 있던 것인지는 service.update_review가 검사한다(남의 key 차단).
     images = _images_field()
 
     @pre_load
@@ -101,7 +100,7 @@ class ReviewResponseSchema(Schema):
     """Review 한 건의 응답 형식."""
 
     author = fields.Nested(ReviewAuthorSchema)
-    # [{key, url}]. 수정 요청에는 key를 그대로 돌려보내고, 화면에는 url을 쓴다.
+    # [{key, url}]. 수정 요청의 images에 남길 key를 돌려보내고, 화면에는 url을 쓴다.
     images = fields.Method("get_images")
     id = fields.Integer()
     user_id = fields.Integer()
@@ -114,13 +113,6 @@ class ReviewResponseSchema(Schema):
     def get_images(self, review):
         # 이미지 기능 이전 리뷰(NULL)와 images 속성이 없는 객체는 빈 목록으로 내려준다.
         return [{"key": key, "url": object_url(key)} for key in (getattr(review, "images", None) or [])]
-
-
-class ReviewImageResponseSchema(Schema):
-    """업로드한 이미지 한 장의 응답({key, url}). ReviewResponseSchema.images 항목과 같은 형식이다."""
-
-    key = fields.String()
-    url = fields.Function(lambda obj: object_url(obj["key"]), allow_none=True)
 
 
 class EventRatingResponseSchema(Schema):
