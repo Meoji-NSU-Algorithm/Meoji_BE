@@ -20,6 +20,9 @@ EXPECTED_ROUTES = {
     ("GET", "/api/events"): "api.events.list_events",
     ("GET", "/api/events/monthly-top"): "api.events.monthly_top_events",
     ("GET", "/api/events/<int:event_id>"): "api.events.get_event",
+    ("POST", "/api/bookmarks"): "api.bookmarks.create",
+    ("GET", "/api/bookmarks"): "api.bookmarks.get_my",
+    ("DELETE", "/api/bookmarks/<int:event_id>"): "api.bookmarks.delete",
 }
 
 
