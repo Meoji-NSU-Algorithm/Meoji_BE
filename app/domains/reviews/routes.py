@@ -25,13 +25,11 @@ review_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
 def create_review():
     """리뷰를 작성한다.
 
-    POST /api/reviews. 본문: event_id, rating, content, images(선택, 업로드 API가 준 key 목록).
-    성공 시 201과 생성된 리뷰.
+    POST /api/reviews. 본문: event_id, rating, content. 성공 시 201과 생성된 리뷰.
 
     Raises:
-        COMMON_INVALID_INPUT: 본문 검증 실패(400). images의 형식·개수·중복 오류 포함.
+        COMMON_INVALID_INPUT: 본문 검증 실패(400).
         USER_NOT_FOUND / EVENT_NOT_FOUND: 작성자 또는 행사가 없음(404).
-        REVIEW_IMAGE_ALREADY_ATTACHED: 다른 리뷰에 이미 붙은 이미지(409).
     """
     user_id = int(get_jwt_identity())
 
@@ -88,7 +86,7 @@ def get_event_rating(event_id):
 @review_bp.get("/my")
 @jwt_required()
 def list_my_reviews():
-    """로그인한 사용자가 쓴 리뷰를 최근 수정순으로 행사 정보와 함께 반환한다.
+    """로그인한 사용자가 쓴 리뷰를 최근 수정순으로 반환한다.
 
     GET /api/reviews/my. 성공 시 200, 리뷰가 없으면 빈 목록.
     """
@@ -106,16 +104,14 @@ def list_my_reviews():
 @review_bp.put("/<int:review_id>")
 @jwt_required()
 def update_review(review_id):
-    """본인이 쓴 리뷰의 평점, 내용 또는 이미지를 수정한다.
+    """본인이 쓴 리뷰의 평점 또는 내용을 수정한다.
 
-    PUT /api/reviews/<review_id>. 본문: rating, content, images 중 하나 이상. 성공 시 200.
-    images를 보내면 목록 전체를 교체하고, 빠진 이미지 중 다른 리뷰가 참조하지 않는 것은 저장소에서도 지운다.
+    PUT /api/reviews/<review_id>. 본문: rating, content 중 하나 이상. 성공 시 200.
 
     Raises:
         COMMON_INVALID_INPUT: 본문 검증 실패 또는 수정할 값 없음(400).
         REVIEW_NOT_FOUND: 리뷰가 없음(404).
         REVIEW_FORBIDDEN: 작성자가 아님(403).
-        REVIEW_IMAGE_ALREADY_ATTACHED: 다른 리뷰에 이미 붙은 이미지(409).
     """
     user_id = int(get_jwt_identity())
 
@@ -136,7 +132,6 @@ def delete_review(review_id):
     """본인이 쓴 리뷰를 삭제하고 삭제된 리뷰를 반환한다.
 
     DELETE /api/reviews/<review_id>. 성공 시 200.
-    첨부 이미지 중 다른 리뷰가 참조하지 않는 것은 저장소에서도 지운다.
 
     Raises:
         REVIEW_NOT_FOUND: 리뷰가 없음(404).
@@ -153,6 +148,7 @@ def delete_review(review_id):
     ), 200
 
 
+
 @review_bp.post("/images")
 @jwt_required()
 def upload_image():
@@ -160,22 +156,18 @@ def upload_image():
 
     POST /api/reviews/images. multipart/form-data의 image 필드. 성공 시 201.
     받은 key를 리뷰 작성(POST)·수정(PUT) 본문의 images에 넣어 연결한다.
-    24시간 안에 리뷰에 붙지 않은 이미지는 정리된다(service.cleanup_unattached_uploads).
     원본은 저장하지 않고 webp로 변환한 결과만 저장한다(app/domains/reviews/images.py).
 
     Raises:
         COMMON_INVALID_INPUT: image 필드가 없음(400).
-        REVIEW_IMAGE_INVALID: 이미지가 아니거나 지원하지 않는 형식, 해상도 초과(400).
+        REVIEW_IMAGE_INVALID: 이미지가 아니거나 지원하지 않는 형식(400).
         REVIEW_IMAGE_TOO_LARGE: 원본이 10MB 초과(413).
-        COMMON_PAYLOAD_TOO_LARGE: 요청 본문이 MAX_CONTENT_LENGTH 초과(413).
         REVIEW_IMAGE_STORAGE_UNAVAILABLE: 저장소 설정 누락 또는 통신 실패(503).
     """
-    user_id = int(get_jwt_identity())
-
-    result = review_service.upload_image(request.files.get("image"), user_id)
+    key = review_service.upload_image(request.files.get("image"))
 
     return jsonify(
         CommonResponse.success(
-            ReviewImageResponseSchema().dump(result)
+            ReviewImageResponseSchema().dump({"key": key})
         )
     ), 201

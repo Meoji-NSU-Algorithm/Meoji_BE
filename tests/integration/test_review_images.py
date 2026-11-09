@@ -4,15 +4,13 @@ import io
 import pytest
 from PIL import Image
 
-from app.core.extensions import db
-from app.domains.reviews import images, storage_client
-from app.domains.reviews.models import Review
+from app.domains.reviews import images
 
 PUBLIC = "http://img.test/review-images"
 
 
 class FakeS3:
-    """storage_client._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
+    """images._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
 
     def __init__(self):
         self.objects = {}
@@ -29,7 +27,7 @@ class FakeS3:
 def s3(app, monkeypatch):
     # kakao_profiles 픽스처처럼 외부 통신 지점(모듈 속성)만 바꾼다.
     fake = FakeS3()
-    monkeypatch.setattr(storage_client, "_client", lambda: fake)
+    monkeypatch.setattr(images, "_client", lambda: fake)
     monkeypatch.setitem(app.config, "S3_BUCKET", "review-images")
     monkeypatch.setitem(app.config, "S3_PUBLIC_URL", PUBLIC)
     return fake
@@ -84,7 +82,6 @@ def test_upload_rejects_non_image_and_too_large(client, login, s3, monkeypatch):
 def test_upload_without_storage_config_is_503(client, login, app, monkeypatch):
     for key in ("S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
         monkeypatch.setitem(app.config, key, None)
-    monkeypatch.delitem(app.extensions, "review_storage_client", raising=False)
     headers, _, _ = login()
     response = _upload(client, headers)
     assert (response.status_code, response.json["code"]) == (503, "REVIEW_IMAGE_STORAGE_UNAVAILABLE")
@@ -137,234 +134,3 @@ def test_review_rejects_invalid_images(client, login, make_event, s3, bad):
                            json={"event_id": make_event().id, "rating": 5, "content": "x", "images": bad})
     assert response.status_code == 400
     assert response.json["code"] == "COMMON_INVALID_INPUT"
-
-
-def test_review_read_without_storage_config_returns_null_url(client, login, make_event, s3, app, monkeypatch):
-    """저장소 설정이 없어도 리뷰 조회는 200이고 url만 null이다."""
-    headers, _, _ = login()
-    eid = make_event().id
-    key = _upload(client, headers).json["data"]["key"]
-    client.post("/api/reviews", headers=headers, json={"event_id": eid, "rating": 4, "content": "후기", "images": [key]})
-    monkeypatch.setitem(app.config, "S3_PUBLIC_URL", None)
-    for name in ("S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
-        monkeypatch.setitem(app.config, name, None)
-
-    for path in (f"/api/events/{eid}", f"/api/reviews/event/{eid}", "/api/reviews/my"):
-        assert client.get(path, headers=headers).status_code == 200, path
-    detail = client.get(f"/api/events/{eid}", headers=headers).json["data"]
-    assert detail["reviews"][0]["images"] == [{"key": key, "url": None}]
-
-
-def _review(client, headers, event_id, keys):
-    return client.post("/api/reviews", headers=headers,
-                       json={"event_id": event_id, "rating": 4, "content": "후기", "images": keys})
-
-
-def test_cannot_attach_or_delete_other_users_image(client, login, make_event, s3):
-    """남의 리뷰에 붙은 key를 가져다 붙이고 수정·삭제해 남의 이미지를 지울 수 없다."""
-    a_headers, _, _ = login(kakao_id=8001)
-    b_headers, _, _ = login(kakao_id=8002)
-    e1, e2 = make_event().id, make_event().id
-    a_key = _upload(client, a_headers).json["data"]["key"]
-    assert _review(client, a_headers, e1, [a_key]).status_code == 201
-
-    # 작성 시 거부
-    response = _review(client, b_headers, e1, [a_key])
-    assert (response.status_code, response.json["code"]) == (409, "REVIEW_IMAGE_ALREADY_ATTACHED")
-
-    # 수정 시 거부, 다른 필드도 바뀌지 않는다
-    b_key = _upload(client, b_headers).json["data"]["key"]
-    b_review = _review(client, b_headers, e2, [b_key]).json["data"]["id"]
-    response = client.put(f"/api/reviews/{b_review}", headers=b_headers,
-                          json={"content": "바뀌면 안 됨", "images": [b_key, a_key]})
-    assert (response.status_code, response.json["code"]) == (409, "REVIEW_IMAGE_ALREADY_ATTACHED")
-    db.session.expire_all()
-    assert db.session.get(Review, b_review).content == "후기"
-
-    # B가 자기 리뷰를 지워도 A의 이미지는 남는다
-    assert client.delete(f"/api/reviews/{b_review}", headers=b_headers).status_code == 200
-    assert a_key in s3.objects and b_key not in s3.objects
-
-
-def test_own_images_can_be_kept_on_update(client, login, make_event, s3):
-    """자기 리뷰에 이미 붙은 key를 그대로 두고 수정하는 것은 허용한다."""
-    headers, _, _ = login()
-    k1, k2 = (_upload(client, headers).json["data"]["key"] for _ in range(2))
-    rid = _review(client, headers, make_event().id, [k1]).json["data"]["id"]
-    response = client.put(f"/api/reviews/{rid}", headers=headers, json={"images": [k1, k2]})
-    assert response.status_code == 200
-    assert [i["key"] for i in response.json["data"]["images"]] == [k1, k2]
-
-
-def test_rejects_duplicate_keys_in_one_review(client, login, make_event, s3):
-    headers, _, _ = login()
-    key = _upload(client, headers).json["data"]["key"]
-    response = _review(client, headers, make_event().id, [key, key])
-    assert (response.status_code, response.json["code"]) == (400, "COMMON_INVALID_INPUT")
-
-
-def test_delete_keeps_images_still_referenced_by_other_reviews(client, login, make_event, s3):
-    """수정 전 데이터처럼 두 리뷰가 같은 key를 가리켜도, 남은 리뷰의 이미지는 지우지 않는다."""
-    a_headers, _, _ = login(kakao_id=8101)
-    b_headers, _, _ = login(kakao_id=8102)
-    eid = make_event().id
-    key = _upload(client, a_headers).json["data"]["key"]
-    _review(client, a_headers, eid, [key])
-    b_review = _review(client, b_headers, eid, []).json["data"]["id"]
-    # API로는 만들 수 없는 공유 상태를 DB에 직접 만든다
-    db.session.get(Review, b_review).images = [key]
-    db.session.commit()
-
-    assert client.delete(f"/api/reviews/{b_review}", headers=b_headers).status_code == 200
-    assert key in s3.objects
-
-
-def test_request_body_over_limit_is_413(client, login, app, s3):
-    """MAX_CONTENT_LENGTH를 넘는 본문은 다 받기 전에 413으로 거절한다."""
-    headers, _, _ = login()
-    response = _upload(client, headers, io.BytesIO(b"0" * (app.config["MAX_CONTENT_LENGTH"] + 1)))
-    assert (response.status_code, response.json["code"]) == (413, "COMMON_PAYLOAD_TOO_LARGE")
-
-
-def test_post_commit_reference_check_failure_does_not_fail_request(client, login, make_event, s3, monkeypatch):
-    """커밋 뒤 참조 확인 쿼리가 실패해도 삭제는 200이고, 확인 못 한 이미지는 지우지 않는다."""
-    from sqlalchemy.exc import OperationalError
-    from app.domains.reviews import service
-
-    headers, _, _ = login()
-    key = _upload(client, headers).json["data"]["key"]
-    rid = _review(client, headers, make_event().id, [key]).json["data"]["id"]
-
-    def fail(*args, **kwargs):
-        raise OperationalError("SELECT", {}, Exception("db down"))
-
-    monkeypatch.setattr(service, "_keys_attached_elsewhere", fail)
-    assert client.delete(f"/api/reviews/{rid}", headers=headers).status_code == 200
-    assert db.session.get(Review, rid) is None
-    assert key in s3.objects
-
-
-# ---------- 리뷰에 붙지 않은 업로드 정리 ----------
-from datetime import datetime, timedelta, timezone
-
-from app.domains.reviews import service as review_service
-from app.domains.reviews.models import ReviewImageUpload
-
-
-def _age(key, hours):
-    """업로드 기록을 hours 시간 전으로 돌린다."""
-    upload = db.session.get(ReviewImageUpload, key)
-    upload.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
-    db.session.commit()
-
-
-def test_upload_is_recorded_until_attached(client, login, make_event, s3):
-    headers, _, uid = login()
-    key = _upload(client, headers).json["data"]["key"]
-    assert db.session.get(ReviewImageUpload, key).user_id == uid
-
-    _review(client, headers, make_event().id, [key])
-    db.session.expire_all()
-    assert db.session.get(ReviewImageUpload, key) is None
-
-
-def test_update_marks_new_images_attached(client, login, make_event, s3):
-    headers, _, _ = login()
-    rid = _review(client, headers, make_event().id, []).json["data"]["id"]
-    key = _upload(client, headers).json["data"]["key"]
-    client.put(f"/api/reviews/{rid}", headers=headers, json={"images": [key]})
-    db.session.expire_all()
-    assert db.session.get(ReviewImageUpload, key) is None
-
-
-def test_cleanup_deletes_only_old_unattached_uploads(client, login, make_event, s3):
-    headers, _, _ = login()
-    old, recent = (_upload(client, headers).json["data"]["key"] for _ in range(2))
-    _age(old, 25)
-    _age(recent, 1)
-
-    assert review_service.cleanup_unattached_uploads() == 1
-    assert old not in s3.objects and recent in s3.objects
-    db.session.expire_all()
-    assert db.session.get(ReviewImageUpload, old) is None
-    assert db.session.get(ReviewImageUpload, recent) is not None
-
-
-def test_cleanup_keeps_file_if_review_still_uses_it(client, login, make_event, s3):
-    """기록이 남아 있어도 리뷰에 붙은 이미지는 파일을 지우지 않고 기록만 지운다."""
-    headers, _, uid = login()
-    key = _upload(client, headers).json["data"]["key"]
-    _review(client, headers, make_event().id, [key])
-    db.session.add(ReviewImageUpload(key=key, user_id=uid))
-    db.session.commit()
-    _age(key, 25)
-
-    assert review_service.cleanup_unattached_uploads() == 0
-    assert key in s3.objects
-    db.session.expire_all()
-    assert db.session.get(ReviewImageUpload, key) is None
-
-
-def test_upload_triggers_cleanup_of_old_uploads(client, login, s3):
-    """별도 스케줄러 없이 다음 업로드 때 오래된 미첨부 업로드가 정리된다."""
-    headers, _, _ = login()
-    old = _upload(client, headers).json["data"]["key"]
-    _age(old, 25)
-    _upload(client, headers)
-    assert old not in s3.objects
-
-
-# ---------- 회원 탈퇴 ----------
-def test_withdraw_deletes_review_images_except_shared(client, login, make_event, s3, monkeypatch):
-    """탈퇴하면 리뷰 이미지를 지우되, 다른 사용자의 리뷰가 참조하는 이미지와 남의 이미지는 남긴다."""
-    from app.domains.auth import kakao_client
-
-    monkeypatch.setattr(kakao_client, "unlink_kakao_user", lambda kakao_id: None)
-    a_headers, _, _ = login(kakao_id=8201)
-    b_headers, _, _ = login(kakao_id=8202)
-    eid = make_event().id
-    own, shared = (_upload(client, a_headers).json["data"]["key"] for _ in range(2))
-    other = _upload(client, b_headers).json["data"]["key"]
-    _review(client, a_headers, eid, [own, shared])
-    b_review = _review(client, b_headers, eid, [other]).json["data"]["id"]
-    # API로는 만들 수 없는 공유 상태를 DB에 직접 만든다
-    db.session.get(Review, b_review).images = [other, shared]
-    db.session.commit()
-
-    assert client.delete("/api/users/me", headers=a_headers).status_code == 200
-    assert own not in s3.objects
-    assert shared in s3.objects and other in s3.objects
-
-
-def test_withdraw_succeeds_when_storage_delete_fails(client, login, make_event, s3, monkeypatch):
-    """저장소 삭제가 실패해도 탈퇴는 성공한다."""
-    from botocore.exceptions import BotoCoreError
-    from app.domains.auth import kakao_client
-
-    monkeypatch.setattr(kakao_client, "unlink_kakao_user", lambda kakao_id: None)
-    headers, _, uid = login()
-    key = _upload(client, headers).json["data"]["key"]
-    _review(client, headers, make_event().id, [key])
-
-    def fail(**kwargs):
-        raise BotoCoreError()
-
-    monkeypatch.setattr(s3, "delete_objects", fail)
-    assert client.delete("/api/users/me", headers=headers).status_code == 200
-    assert client.get("/api/users/me", headers=headers).status_code == 401
-
-
-def test_my_reviews_include_event_author_and_images(client, login, make_event, s3):
-    """내 리뷰에는 행사 정보, 작성자, 이미지 {key, url}이 함께 나온다."""
-    headers, _, uid = login(nickname="나")
-    event = make_event(title="내 행사", image_url="https://example.com/e.jpg")
-    key = _upload(client, headers).json["data"]["key"]
-    _review(client, headers, event.id, [key])
-
-    review = client.get("/api/reviews/my", headers=headers).json["data"][0]
-    assert review["event"] == {
-        "id": event.id, "title": "내 행사", "image_url": "https://example.com/e.jpg",
-        "end_date": event.end_date.isoformat(),
-    }
-    assert review["author"]["id"] == uid
-    assert review["images"] == [{"key": key, "url": f"{PUBLIC}/{key}"}]
