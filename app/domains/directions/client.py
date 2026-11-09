@@ -48,37 +48,23 @@ def raise_odsay_error(result: dict, provider: str) -> None:
             code,
             message,
         )
-        raise BusinessException(
-            ErrorCode.DIRECTIONS_API_AUTH_FAILED
-        ) from None
+        raise BusinessException(ErrorCode.DIRECTIONS_API_AUTH_FAILED) from None
 
-    # 기존 대중교통 오류 처리 유지
+    # 검색 데이터 없음 - 대중교통
     if code == "400":
-        raise BusinessException(
-            ErrorCode.ROUTE_NOT_FOUND
-        ) from None
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND) from None
 
+    # 필수 정보 누락 오류 - 대중교통
     if code == "401":
-        raise BusinessException(
-            ErrorCode.COMMON_INVALID_INPUT
-        ) from None
+        raise BusinessException(ErrorCode.COMMON_INVALID_INPUT) from None
 
-    # 기존 도보 오류 처리 유지
+    # 출·도착 좌표가 동일 오류 - 도보
     if code == "403":
-        raise BusinessException(
-            ErrorCode.ROUTE_NOT_FOUND
-        ) from None
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND) from None
 
     # 그 외 ODsay 오류
-    current_app.logger.warning(
-        "%s 오류 응답: code=%s message=%s",
-        provider,
-        code,
-        message,
-    )
-    raise BusinessException(
-        ErrorCode.DIRECTIONS_API_ERROR
-    ) from None
+    current_app.logger.warning("%s 오류 응답: code=%s message=%s", provider, code, message)
+    raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR) from None
 
 
 def get_json(url, *, params, provider, headers=None, on_http_error=None):
@@ -97,41 +83,21 @@ def get_json(url, *, params, provider, headers=None, on_http_error=None):
         return response.json()
 
     except requests.Timeout:
-        current_app.logger.warning(
-            "%s 길찾기 API 요청 시간 초과",
-            provider,
-        )
-        raise BusinessException(
-            ErrorCode.DIRECTIONS_API_TIMEOUT
-        ) from None
+        current_app.logger.warning("%s 길찾기 API 요청 시간 초과", provider)
+        raise BusinessException(ErrorCode.DIRECTIONS_API_TIMEOUT) from None
 
     except requests.HTTPError as error:
         # URL이나 예외 원문을 기록하지 않고 HTTP 상태 코드만 기록한다.
-        status = (
-            error.response.status_code
-            if error.response is not None
-            else None
-        )
+        status = (error.response.status_code if error.response is not None else None)
 
-        current_app.logger.warning(
-            "%s 길찾기 API HTTP 오류: status=%s",
-            provider,
-            status,
-        )
+        current_app.logger.warning("%s 길찾기 API HTTP 오류: status=%s", provider, status)
 
         # 카카오 등 서비스별 HTTP 오류 처리가 필요한 경우 위임한다.
         if on_http_error is not None:
             on_http_error(error)
 
-        raise BusinessException(
-            ErrorCode.DIRECTIONS_API_ERROR
-        ) from None
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR) from None
 
     except (requests.RequestException, ValueError):
-        current_app.logger.warning(
-            "%s 길찾기 API 호출 실패",
-            provider,
-        )
-        raise BusinessException(
-            ErrorCode.DIRECTIONS_API_ERROR
-        ) from None
+        current_app.logger.warning("%s 길찾기 API 호출 실패", provider)
+        raise BusinessException(ErrorCode.DIRECTIONS_API_ERROR) from None
