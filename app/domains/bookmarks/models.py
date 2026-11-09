@@ -1,3 +1,4 @@
+"""북마크(사용자와 행사 사이의 저장 관계) 모델."""
 from datetime import datetime, timezone
 
 from app.core.extensions import db
