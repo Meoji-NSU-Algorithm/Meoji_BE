@@ -35,9 +35,6 @@ class Config:
     # 한국관광공사 TourAPI 인증 키
     TOURAPI_KEY = os.environ.get("TOURAPI_KEY")
 
-    # ODSAY API 인증 키
-    ODSAY_API_KEY = os.getenv("ODSAY_API_KEY")
-
     # access token은 탈취 시 피해를 줄이기 위해 짧게, refresh token은 길게 둔다.
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=14)
@@ -58,10 +55,6 @@ class Config:
     S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY")
     # 이미지 공개 주소의 앞부분. 비워 두면 1시간짜리 presigned URL을 만든다.
     S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL")
-
-    # 요청 본문 최대 크기. 넘으면 Werkzeug가 본문을 다 받기 전에 413으로 거절한다.
-    # 이미지 한 장 한도(images.MAX_UPLOAD_BYTES, 10MB)에 multipart 머리글 여유 1MB를 더했다.
-    MAX_CONTENT_LENGTH = 11 * 1024 * 1024
 
 
 # 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.

@@ -148,7 +148,7 @@ def test_my_reviews_only_own_and_ordered(make_user, make_event, make_review):
     old = make_review(me, e1, created_at=t(2026, 1, 1), updated_at=t(2026, 1, 1))
     new = make_review(me, e2, created_at=t(2026, 1, 1), updated_at=t(2026, 2, 1))
     make_review(other, e1)
-    assert [r["id"] for r in service.get_my_reviews(me.id)] == [new.id, old.id]
+    assert [r.id for r in service.get_my_reviews(me.id)] == [new.id, old.id]
 
 
 def test_my_reviews_empty(user):
