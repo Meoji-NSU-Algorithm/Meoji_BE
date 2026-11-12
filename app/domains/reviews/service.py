@@ -11,6 +11,7 @@ from app.domains.users.models import User
 from app.core.errors import BusinessException, ErrorCode
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 # MySQL의 중복 키(unique 위반) 오류 번호
 _MYSQL_DUP_ENTRY = 1062
@@ -104,10 +105,11 @@ def get_reviews_by_event(event_id: int) -> list[Review]:
 
 
 def get_my_reviews(user_id: int) -> list[Review]:
-    """사용자가 쓴 리뷰를 최근 수정순으로 반환한다."""
+    """사용자가 쓴 리뷰를 최근 수정순으로 반환한다. 각 리뷰의 행사(event)도 함께 읽는다."""
     # 시각이 같으면 ID 내림차순으로 순서를 고정한다.
     reviews = db.session.scalars(
         select(Review)
+        .options(selectinload(Review.event))  # 행사를 한 번의 추가 쿼리로 읽는다(N+1 방지)
         .where(Review.user_id == user_id)
         .order_by(Review.updated_at.desc(), Review.created_at.desc(), Review.id.desc())
     ).all()

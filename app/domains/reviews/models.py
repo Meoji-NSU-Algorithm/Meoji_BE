@@ -28,6 +28,9 @@ class Review(TimestampMixin, db.Model):
 
     author = db.relationship("User", lazy="joined")
 
+    # 내 리뷰 목록처럼 행사 요약이 필요한 곳에서 selectinload로 함께 읽는다.
+    event = db.relationship("Event", lazy="select")
+
     # API 검증을 우회한 입력에도 평점 범위와 0.5 단위를 보장하고,
     # 한 사용자가 한 행사에 리뷰를 하나만 쓰도록 DB에서 강제한다.
     __table_args__ = (
