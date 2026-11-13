@@ -18,6 +18,8 @@ class ErrorCode(Enum):
     # 라우팅 단계의 HTTPException: 존재하지 않는 경로(404)와 허용되지 않는 메서드(405)
     COMMON_NOT_FOUND = (404, "요청한 경로를 찾을 수 없습니다.")
     COMMON_METHOD_NOT_ALLOWED = (405, "허용되지 않는 HTTP 메서드입니다.")
+    # 요청 본문이 config.MAX_CONTENT_LENGTH를 넘은 경우
+    COMMON_PAYLOAD_TOO_LARGE = (413, "요청 본문이 너무 큽니다.")
     # 위 두 경우 외의 HTTPException 폴백. 실제 상태 코드와 설명은 핸들러가 예외에서 가져온다.
     COMMON_HTTP_ERROR = (400, "요청을 처리할 수 없습니다.")
 
