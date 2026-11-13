@@ -15,7 +15,7 @@ directions_bp = Blueprint("directions", __name__, url_prefix="/directions")
 
 
 @directions_bp.get("/<int:event_id>")
-# @jwt_required
+@jwt_required
 def get_directions(event_id):
     """행사까지의 이동 경로를 조회한다.
 
