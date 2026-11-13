@@ -66,6 +66,13 @@ class ReviewCreateSchema(Schema):
         # 공백만 있는 리뷰를 길이 검증으로 걸러내기 위해 검증 전에 제거한다.
         return _strip_content(data)
 
+class MyReviewEventSchema(Schema):
+    """내 리뷰에 붙는 행사 요약."""
+
+    id = fields.Integer()
+    title = fields.String()
+    image_url = fields.String(allow_none=True)
+    end_date = fields.Date(allow_none=True)  # 'YYYY-MM-DD'
 
 class ReviewUpdateSchema(Schema):
     """리뷰 수정 요청 본문. 보낸 필드만 수정하며 하나 이상 있어야 한다."""
@@ -128,3 +135,8 @@ class EventRatingResponseSchema(Schema):
     event_id = fields.Integer()
     average_rating = fields.Float()
     review_count = fields.Integer()
+
+class MyReviewResponseSchema(ReviewResponseSchema):
+    """내 리뷰 한 건의 응답. 기본 리뷰 필드에 행사 요약(event)을 더한다."""
+
+    event = fields.Nested(MyReviewEventSchema, allow_none=True)
