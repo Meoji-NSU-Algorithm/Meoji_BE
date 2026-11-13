@@ -10,6 +10,7 @@ from app.domains.users.routes import users_bp
 from app.domains.reviews.routes import review_bp
 from app.domains.events.routes import events_bp
 from app.domains.bookmarks.routes import bookmark_bp
+from app.domains.directions.routes import directions_bp
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -19,3 +20,4 @@ api_bp.register_blueprint(users_bp)
 api_bp.register_blueprint(review_bp)
 api_bp.register_blueprint(events_bp)
 api_bp.register_blueprint(bookmark_bp)
+api_bp.register_blueprint(directions_bp)
