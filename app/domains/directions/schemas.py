@@ -46,4 +46,6 @@ class DirectionsResponseSchema(Schema):
 
     arrival_time = fields.String(data_key="arrivalTime")
 
+    path = fields.Raw(required=True)
+
     steps = fields.List(fields.Nested(DirectionsStepSchema))
