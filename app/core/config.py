@@ -38,6 +38,9 @@ class Config:
     # ODSAY API 인증 키
     ODSAY_API_KEY = os.getenv("ODSAY_API_KEY")
 
+    # 공연예술통합전산망(KOPIS) 인증 키
+    KOPIS_API_KEY = os.environ.get("KOPIS_API_KEY")
+
     # access token은 탈취 시 피해를 줄이기 위해 짧게, refresh token은 길게 둔다.
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=14)
@@ -63,7 +66,7 @@ class Config:
     MAX_CONTENT_LENGTH = 51 * 1024 * 1024
 
 
-# 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY는 선택이라 제외한다.
+# 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY, KOPIS_API_KEY는 선택이라 제외한다.
 REQUIRED_CONFIG_KEYS = (
     "JWT_SECRET_KEY",
     "KAKAO_CLIENT_ID",
