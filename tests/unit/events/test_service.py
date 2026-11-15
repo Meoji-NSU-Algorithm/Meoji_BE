@@ -365,3 +365,25 @@ def test_view_count_feeds_monthly_top(make_event):
     db.session.rollback()
     r = service.monthly_top(mq(size=1), today=TODAY)
     assert r["events"][0]["monthly_views"] == 2
+
+
+def test_same_user_counts_once_per_day(make_event):
+    """같은 사용자의 같은 날 반복 조회는 한 번, 다른 사용자와 다음 날은 따로 센다. 지난 날짜 기록은 지운다."""
+    from app.domains.events.models import EventUserDailyView
+    from app.domains.users.models import User
+
+    ev = make_event()
+    me, other = (User(kakao_id=9000 + n, email=f"v{n}@test.com", nickname=f"v{n}") for n in range(2))
+    db.session.add_all([me, other])
+    db.session.commit()
+
+    service.get_event(ev.id, today=TODAY, user_id=me.id)
+    service.get_event(ev.id, today=TODAY, user_id=me.id)
+    service.get_event(ev.id, today=TODAY, user_id=other.id)
+    me_id = me.id
+    service.get_event(ev.id, today=TODAY + timedelta(days=1), user_id=me_id)
+
+    db.session.remove()  # REPEATABLE READ 스냅샷을 버리고 별도 Session이 쓴 값을 새로 읽는다
+    assert db.session.get(Event, ev.id).view_count == 3
+    assert db.session.get(EventDailyView, (ev.id, TODAY)).view_count == 2
+    assert db.session.get(EventUserDailyView, (me_id, ev.id, TODAY)) is None
