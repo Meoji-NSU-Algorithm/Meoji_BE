@@ -2,6 +2,7 @@
 from app.core.db import TimestampMixin
 from app.core.extensions import db
 
+
 class User(TimestampMixin, db.Model):
     """카카오 로그인으로 가입한 유저."""
     __tablename__ = "user"

@@ -3,6 +3,7 @@ from marshmallow import Schema, fields, validate
 
 from app.core.fields import UtcDateTime
 
+
 class UserResponseSchema(Schema):
     """GET /api/users/me 응답. 여기 정의한 필드만 노출되므로 kakao_id, created_at 등 내부 컬럼은 응답에서 빠진다."""
     id = fields.Integer()

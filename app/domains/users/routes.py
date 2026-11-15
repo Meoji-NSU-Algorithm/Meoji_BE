@@ -10,6 +10,7 @@ from app.domains.users import service as user_service
 # 부모 Blueprint(api_bp)가 /api를 붙인다.
 users_bp = Blueprint("users", __name__, url_prefix="/users")
 
+
 @users_bp.get("/me")
 @jwt_required()
 def get_user():

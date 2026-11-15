@@ -28,6 +28,7 @@ def login_with_kakao(code: str) -> dict[str, str | bool]:
         "is_new_user": is_new_user,
     }
 
+
 def refresh(refresh_payload: dict) -> dict[str, str]:
     """refresh 토큰으로 access/refresh 토큰 쌍을 새로 발급한다.
 
@@ -49,6 +50,7 @@ def refresh(refresh_payload: dict) -> dict[str, str]:
         raise BusinessException(ErrorCode.AUTH_TOKEN_INVALID)
     return token_service.rotate_refresh_token(refresh_payload)
 
+
 def logout(access_payload: dict, refresh_token: str) -> None:
     """헤더의 access 토큰과 body의 refresh 토큰을 모두 폐기한다.
 
@@ -57,6 +59,7 @@ def logout(access_payload: dict, refresh_token: str) -> None:
         refresh_token: body로 받은 refresh 토큰 문자열 (미검증, token_service에서 검증한다).
     """
     token_service.revoke_tokens(access_payload, refresh_token)
+
 
 def withdraw(user_id: int, access_jti: str) -> None:
     """회원 탈퇴. 유저를 삭제하고 현재 access token을 폐기한 뒤 카카오 연결을 끊는다.
