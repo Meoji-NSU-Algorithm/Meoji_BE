@@ -18,6 +18,8 @@ class ErrorCode(Enum):
     # 라우팅 단계의 HTTPException: 존재하지 않는 경로(404)와 허용되지 않는 메서드(405)
     COMMON_NOT_FOUND = (404, "요청한 경로를 찾을 수 없습니다.")
     COMMON_METHOD_NOT_ALLOWED = (405, "허용되지 않는 HTTP 메서드입니다.")
+    # 요청 본문이 config.MAX_CONTENT_LENGTH를 넘은 경우
+    COMMON_PAYLOAD_TOO_LARGE = (413, "요청 본문이 너무 큽니다.")
     # 위 두 경우 외의 HTTPException 폴백. 실제 상태 코드와 설명은 핸들러가 예외에서 가져온다.
     COMMON_HTTP_ERROR = (400, "요청을 처리할 수 없습니다.")
 
@@ -28,6 +30,16 @@ class ErrorCode(Enum):
     # --- EVENT ---
     # 상세 조회 대상 행사나 리뷰 조회 대상 행사가 없을 때
     EVENT_NOT_FOUND = (404, "행사를 찾을 수 없습니다.")
+
+    # --- DIRECTIONS ---
+    # 행사는 존재하지만 목적지 좌표가 없거나, 요청한 조건으로 이용 가능한 경로를 찾지 못한 경우.
+    ROUTE_NOT_FOUND = (404, "경로를 찾을 수 없습니다.")
+    # 외부 길찾기 API의 인증 오류, 권한 오류, 서버 오류 등
+    DIRECTIONS_API_ERROR = (502, "길찾기 서비스 연동 중 오류가 발생했습니다.")
+    # 외부 길찾기 API 응답 시간 초과
+    DIRECTIONS_API_TIMEOUT = (504, "길찾기 서비스 응답 시간이 초과되었습니다.")
+    # 길찾기 API 키가 서버 설정에 없는 경우
+    DIRECTIONS_API_KEY_MISSING = (500, "길찾기 서비스 API 키가 설정되지 않았습니다.")
 
     # --- TOUR API ---
     # 연결/HTTP/API 실패는 요청 실패로, 응답 구조/페이지 오류는 응답 오류로 묶는다.
