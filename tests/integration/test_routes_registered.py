@@ -15,12 +15,14 @@ EXPECTED_ROUTES = {
     ("GET", "/api/reviews/my"): "api.reviews.list_my_reviews",
     ("PUT", "/api/reviews/<int:review_id>"): "api.reviews.update_review",
     ("DELETE", "/api/reviews/<int:review_id>"): "api.reviews.delete_review",
-    ("POST", "/api/reviews/images"): "api.reviews.upload_image",
     ("GET", "/api/events/categories"): "api.events.list_categories",
     ("GET", "/api/events/sidos"): "api.events.list_sidos",
     ("GET", "/api/events"): "api.events.list_events",
     ("GET", "/api/events/monthly-top"): "api.events.monthly_top_events",
     ("GET", "/api/events/<int:event_id>"): "api.events.get_event",
+    ("POST", "/api/bookmarks"): "api.bookmarks.create_bookmark",
+    ("GET", "/api/bookmarks"): "api.bookmarks.list_my_bookmarks",
+    ("DELETE", "/api/bookmarks/<int:event_id>"): "api.bookmarks.delete_bookmark",
 }
 
 

@@ -4,8 +4,9 @@
 from app.domains.users.models import User
 from app.domains.auth.models import TokenBlocklist
 from app.domains.reviews.models import Review
+from app.domains.bookmarks.models import Bookmark
 
 from app.domains.events.models import Category, Sido, Event, Tag, EventTag, EventDailyView
 from app.domains.tour.models import TourSyncState
 
-__all__ = ["User", "TokenBlocklist", "Review", "Category", "Sido", "Event", "Tag", "EventTag", "EventDailyView", "TourSyncState"]
+__all__ = ["User", "TokenBlocklist", "Review", "Bookmark", "Category", "Sido", "Event", "Tag", "EventTag", "EventDailyView", "TourSyncState"]

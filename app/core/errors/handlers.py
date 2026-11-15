@@ -38,12 +38,14 @@ def register_error_handlers(app: Flask):
     @app.errorhandler(HTTPException)
     def handle_http_exception(e: HTTPException):
         """라우팅 단계 HTTPException을 상태 코드별 ErrorCode로 변환한다."""
-        # 404/405 외의 상태 코드는 COMMON_HTTP_ERROR에 예외 자신의 설명을 담는다.
+        # 404/405/413 외의 상태 코드는 COMMON_HTTP_ERROR에 예외 자신의 설명을 담는다.
         status_code = e.code or 500
         if isinstance(e, MethodNotAllowed):
             body = CommonResponse.error(ErrorCode.COMMON_METHOD_NOT_ALLOWED)
         elif status_code == 404:
             body = CommonResponse.error(ErrorCode.COMMON_NOT_FOUND)
+        elif status_code == 413:
+            body = CommonResponse.error(ErrorCode.COMMON_PAYLOAD_TOO_LARGE)
         else:
             body = CommonResponse.error(ErrorCode.COMMON_HTTP_ERROR, e.description)
         response = jsonify(body)
