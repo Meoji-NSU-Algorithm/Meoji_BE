@@ -94,7 +94,7 @@ def test_saves_new_performance_with_detail_and_facility(seeded):
     e = events()["KOPIS-PF1"]
     assert (e.category.name, e.sido_code, e.title) == ("공연", "27", "공연PF1 [대구]")
     assert (e.start_date, e.end_date, e.is_permanent) == (date(2026, 11, 28), date(2026, 11, 29), False)
-    assert e.venue_name == "아트벙커" and e.image_url.endswith("PF1.png")
+    assert e.venue_name == "아트벙커" and e.image_url == "https://kopis.or.kr/upload/pfmPoster/PF1.png"
     assert (e.price, e.is_free, e.fee_text) == (30000, False, "전석 30,000원")
     assert e.play_time == "토요일(14:00,17:00)" and e.organizer == "극단 초이스"
     assert e.homepage_url == "https://ticket.example.com/1"

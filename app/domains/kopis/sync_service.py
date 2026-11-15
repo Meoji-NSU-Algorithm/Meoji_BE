@@ -86,6 +86,12 @@ def _coordinate(value, bound):
     return number if number.is_finite() and abs(number) <= bound else None
 
 
+def _https_poster(url):
+    """KOPIS 포스터 주소를 https로 바꾼다. 응답은 http://www.kopis.or.kr/...로 오는데, https 사이트에서는
+    http 이미지가 막히고 https://www.kopis.or.kr/...는 301이라 www 없는 https 주소를 쓴다."""
+    return url.replace("http://www.kopis.or.kr/", "https://kopis.or.kr/", 1) if url else url
+
+
 def normalize_title(title):
     """비교용 제목. 소문자로 바꾸고 지역 꼬리표·연도·회차·공백·기호를 뺀다."""
     return _TITLE_NOISE.sub("", (title or "").lower())
@@ -220,7 +226,7 @@ class KopisSyncService:
                 row.start_date, row.end_date = start, end
                 row.is_permanent = item.get("openrun") == "Y" or (end - start).days > 90
                 row.venue_name = _text(item.get("fcltynm"), "venue_name")
-                row.image_url = _text(item.get("poster"), "image_url")
+                row.image_url = _text(_https_poster(item.get("poster")), "image_url")
                 if detail is not None:
                     row.description = detail.get("sty")
                     row.play_time = _text(detail.get("dtguidance"), "play_time")
