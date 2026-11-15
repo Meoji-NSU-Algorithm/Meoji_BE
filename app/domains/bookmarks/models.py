@@ -1,7 +1,6 @@
 """북마크(사용자와 행사 사이의 저장 관계) 모델."""
-from datetime import datetime, timezone
-
 from app.core.extensions import db
+from app.core.time import utcnow
 
 
 class Bookmark(db.Model):
@@ -13,7 +12,7 @@ class Bookmark(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     event_id = db.Column(db.Integer, db.ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     # 북마크 목록에서 연결된 행사 정보를 함께 읽을 수 있게 한다.
     event = db.relationship("Event")
