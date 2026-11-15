@@ -11,6 +11,7 @@ from app.core.response import CommonResponse
 from app.domains.auth.schemas import KakaoLoginRequestSchema, LogoutRequestSchema, TokenResponseSchema
 from app.domains.auth import service as auth_service
 
+# 부모 Blueprint(api_bp)가 /api를 붙인다.
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 @auth_bp.post("/kakao")

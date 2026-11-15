@@ -17,6 +17,8 @@ CONTENT_MAX_LENGTH = 1000
 CONTENT_LENGTH_MESSAGE = "리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."
 
 
+# PyCharm이 validate.Length 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 def _content_validator():
     """content 필드용 길이 검증기를 만든다. 글자 수 기준이며 바이트 수가 아니다."""
     return validate.Length(min=1, max=CONTENT_MAX_LENGTH, error=CONTENT_LENGTH_MESSAGE)
@@ -38,6 +40,8 @@ def validate_rating(value):
         raise ValidationError("평점은 0.5 단위로 0.5~5.0 사이여야 합니다.")
 
 
+# PyCharm이 validate.Regexp/Length 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 def _images_field():
     """images 필드(수정 시 남길 기존 사진 key)를 만든다. 리뷰에 실제로 붙은 key인지는 서비스가 검사한다."""
     return fields.List(
@@ -47,6 +51,8 @@ def _images_field():
     )
 
 
+# PyCharm이 validate.Range 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 class ReviewCreateSchema(Schema):
     """리뷰 작성 요청 본문.
 
