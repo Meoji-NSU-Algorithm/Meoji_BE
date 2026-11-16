@@ -40,10 +40,12 @@ def list_categories() -> list[Category]:
     statement = select(Category).order_by(Category.sort_order, Category.id)
     return db.session.scalars(statement).all()
 
+
 def list_sidos() -> list[Sido]:
     """시도 전체를 표시 순서대로 반환한다. 기준값은 마이그레이션이 시드한다."""
     statement = select(Sido).order_by(Sido.sort_order, Sido.code)
     return db.session.scalars(statement).all()
+
 
 def monthly_top(query: dict, today: date | None = None) -> dict:
     """월간 조회수 상위 행사를 반환한다.
@@ -103,6 +105,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
             for event, views in rows
         ],
     }
+
 
 def list_events(query: dict) -> dict:
     """종료되지 않은 행사를 조건에 맞게 검색해 한 페이지를 반환한다.
@@ -180,6 +183,7 @@ def list_events(query: dict) -> dict:
         "size": size,
         "events": events,
     }
+
 
 def get_event(event_id: int, today: date | None = None, request_method: str = "GET") -> Event:
     """행사 한 건을 조회하고, GET이면 조회수를 1 올린다.
