@@ -54,5 +54,24 @@ services:
       db:
         condition: service_healthy
 
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 인증서를 보관한다. 없으면 컨테이너를 다시 만들 때마다 재발급되어 발급 횟수 제한에 걸린다.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   db_data:
+  caddy_data:
+  caddy_config:
