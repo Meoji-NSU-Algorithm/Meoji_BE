@@ -11,7 +11,9 @@ from app.core.response import CommonResponse
 from app.domains.auth.schemas import KakaoLoginRequestSchema, LogoutRequestSchema, TokenResponseSchema
 from app.domains.auth import service as auth_service
 
+# 부모 Blueprint(api_bp)가 /api를 붙인다.
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
+
 
 @auth_bp.post("/kakao")
 def kakao_login():
@@ -38,6 +40,7 @@ def kakao_login():
 
     return jsonify(CommonResponse.success(TokenResponseSchema().dump(result))), 200
 
+
 @auth_bp.post("/refresh")
 # refresh=True: refresh 토큰만 허용한다. 서명, 만료, 블록리스트 검증도 이 데코레이터가 처리한다.
 @jwt_required(refresh=True)
@@ -63,6 +66,7 @@ def refresh_token():
 
     # tokens에는 is_new_user가 없으므로 dump 결과에서 빠진다. (로그인과 같은 스키마 재사용)
     return jsonify(CommonResponse.success(TokenResponseSchema().dump(tokens))), 200
+
 
 @auth_bp.post("/logout")
 # 인자 없는 @jwt_required()는 access 토큰만 허용한다.
