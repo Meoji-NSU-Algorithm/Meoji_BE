@@ -15,3 +15,13 @@ def valid_number_or_none(value):
         return None
 
     return value
+
+def remove_consecutive_duplicates(coordinates):
+    """연속으로 중복되는 좌표를 제거한다."""
+    result = []
+
+    for coordinate in coordinates:
+        if not result or coordinate != result[-1]:
+            result.append(coordinate)
+
+    return result

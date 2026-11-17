@@ -3,8 +3,12 @@
 from datetime import timedelta
 
 from app.core.errors import BusinessException, ErrorCode
+
 from app.domains.directions.client import get_api_key, request_json
-from app.domains.directions.core.utils import valid_number_or_none
+from app.domains.directions.core.utils import (
+    valid_number_or_none,
+    remove_consecutive_duplicates,
+)
 
 
 def build_car_steps(route):
@@ -54,6 +58,43 @@ def build_car_steps(route):
     return steps
 
 
+def build_car_path(route):
+    """카카오 응답에서 지도에 표시할 자동차 경로 좌표를 추출한다."""
+    sections = route.get("sections", [])
+
+    if not isinstance(sections, list):
+        return []
+
+    coordinates = []
+
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+
+        roads = section.get("roads", [])
+
+        if not isinstance(roads, list):
+            continue
+
+        for road in roads:
+            if not isinstance(road, dict):
+                continue
+
+            vertexes = road.get("vertexes", [])
+
+            if not isinstance(vertexes, list):
+                continue
+
+            for i in range(0, len(vertexes) - 1, 2):
+                lng = valid_number_or_none(vertexes[i])
+                lat = valid_number_or_none(vertexes[i + 1])
+
+                if lat is not None and lng is not None:
+                    coordinates.append([lat, lng])
+
+    return remove_consecutive_duplicates(coordinates)
+
+
 def get_car_directions(event, origin_lat, origin_lng, departure_time):
     """카카오 자동차 길찾기 API를 호출하고 결과를 반환한다."""
 
@@ -97,6 +138,11 @@ def get_car_directions(event, origin_lat, origin_lng, departure_time):
 
     arrival_time = departure_time + timedelta(seconds=duration)
 
+    car_path = build_car_path(route)
+
+    if not car_path:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
     return {
         "event_id": event.id,
         "mode": "car",
@@ -104,5 +150,6 @@ def get_car_directions(event, origin_lat, origin_lng, departure_time):
         "duration_minutes": round(duration / 60),
         "distance_meters": distance,
         "arrival_time": arrival_time.isoformat(),
+        "path": car_path,
         "steps": build_car_steps(route),
     }
