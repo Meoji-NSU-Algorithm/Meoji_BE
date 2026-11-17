@@ -28,7 +28,7 @@ class ErrorCode(Enum):
     COMMON_INTERNAL_ERROR = (500, "알 수 없는 서버 오류")
 
     # --- EVENT ---
-    # 상세 조회 대상 행사나 리뷰 조회 대상 행사가 없을 때
+    # 행사 상세 조회, 리뷰 작성, 북마크 추가 대상 행사가 없을 때 (리뷰 목록 조회는 빈 목록을 돌려주므로 해당 없음)
     EVENT_NOT_FOUND = (404, "행사를 찾을 수 없습니다.")
 
     # --- DIRECTIONS ---
