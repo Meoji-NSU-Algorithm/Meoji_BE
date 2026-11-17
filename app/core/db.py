@@ -1,11 +1,6 @@
 """여러 도메인 모델이 공유하는 DB 믹스인."""
-from datetime import datetime, timezone
-
 from app.core.extensions import db
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from app.core.time import utcnow
 
 
 class TimestampMixin:
@@ -15,5 +10,5 @@ class TimestampMixin:
     다를 수 있다). updated_at은 이후 UPDATE될 때마다 현재 시각으로 갱신된다.
     """
 
-    created_at = db.Column(db.DateTime, nullable=False, default=_utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)

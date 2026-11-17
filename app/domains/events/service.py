@@ -13,6 +13,7 @@ from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
 from app.core.time import KST
 from app.domains.events.models import Category, Event, EventDailyView, Sido, Tag
+from app.domains.reviews import service as review_service
 
 
 def _contains_keyword(value: str | None) -> str | None:
@@ -25,15 +26,26 @@ def _contains_keyword(value: str | None) -> str | None:
     return f"%{escaped}%"
 
 
+def _attach_ratings(events) -> None:
+    """카드에 쓸 평균 평점과 리뷰 수를 행사 객체에 붙인다. 카드마다 조회하지 않고 한 번에 구한다."""
+    ratings = review_service.get_rating_map(event.id for event in events)
+
+    for event in events:
+        event.average_rating = ratings[event.id]["average_rating"]
+        event.review_count = ratings[event.id]["review_count"]
+
+
 def list_categories() -> list[Category]:
     """카테고리 전체를 표시 순서대로 반환한다. 같은 순서값은 ID로 정렬한다."""
     statement = select(Category).order_by(Category.sort_order, Category.id)
     return db.session.scalars(statement).all()
 
+
 def list_sidos() -> list[Sido]:
     """시도 전체를 표시 순서대로 반환한다. 기준값은 마이그레이션이 시드한다."""
     statement = select(Sido).order_by(Sido.sort_order, Sido.code)
     return db.session.scalars(statement).all()
+
 
 def monthly_top(query: dict, today: date | None = None) -> dict:
     """월간 조회수 상위 행사를 반환한다.
@@ -85,6 +97,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
             .limit(query["size"] - len(rows))
         ).all()
         rows.extend((event, 0) for event in recommendations)
+    _attach_ratings([event for event, _ in rows])
     return {
         "month": f"{month.year:04d}-{month.month:02d}",
         "events": [
@@ -92,6 +105,7 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
             for event, views in rows
         ],
     }
+
 
 def list_events(query: dict) -> dict:
     """종료되지 않은 행사를 조건에 맞게 검색해 한 페이지를 반환한다.
@@ -162,12 +176,14 @@ def list_events(query: dict) -> dict:
         .limit(size)
     )
     events = db.session.scalars(statement).all()
+    _attach_ratings(events)
     return {
         "total_count": total_count,
         "page": page,
         "size": size,
         "events": events,
     }
+
 
 def get_event(event_id: int, today: date | None = None, request_method: str = "GET") -> Event:
     """행사 한 건을 조회하고, GET이면 조회수를 1 올린다.

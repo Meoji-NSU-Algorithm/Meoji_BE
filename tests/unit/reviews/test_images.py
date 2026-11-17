@@ -56,3 +56,19 @@ def test_rejects_non_image_and_unsupported_format(raw):
 ])
 def test_key_pattern(key, ok):
     assert bool(KEY_PATTERN.match(key)) is ok
+
+
+def test_accepts_mpo_phone_photo():
+    """폰 카메라 JPEG(MPO)는 움직이는 이미지로 거부하지 않고 첫 프레임을 저장한다."""
+    out = io.BytesIO()
+    Image.new("RGB", (40, 30), "red").save(out, "MPO", save_all=True, append_images=[Image.new("RGB", (40, 30), "blue")])
+    image = Image.open(io.BytesIO(convert_to_webp(out.getvalue())))
+    assert image.size == (40, 30) and image.getpixel((0, 0))[0] > 200
+
+
+def test_rejects_too_many_pixels(monkeypatch):
+    from app.domains.reviews import images
+    monkeypatch.setattr(images, "MAX_PIXELS", 100 * 100)
+    with pytest.raises(BusinessException) as e:
+        convert_to_webp(_image_bytes("PNG", (101, 100)))
+    assert e.value.error_code == ErrorCode.REVIEW_IMAGE_INVALID

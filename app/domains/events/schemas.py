@@ -41,6 +41,8 @@ class EmptyQuerySchema(QuerySchema):
     pass
 
 
+# PyCharm이 validate.Range 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 class EventPathSchema(Schema):
     """행사 상세 경로 파라미터."""
 
@@ -67,6 +69,8 @@ class SidoOptionSchema(Schema):
     sort_order = fields.Integer()
 
 
+# PyCharm이 validate.Length/Regexp/Range/OneOf 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 class EventListQuerySchema(QuerySchema):
     """행사 목록 쿼리. 모든 조건은 AND로 결합된다."""
 
@@ -144,6 +148,10 @@ class EventCardSchema(Schema):
     view_count = fields.Integer()
     price = fields.Integer(allow_none=True)
     is_free = fields.Boolean(allow_none=True)
+    # 목록·월간 인기는 events.service._attach_ratings가 붙인다. 붙이지 않은 객체(상세)는 응답에서 빠지고,
+    # 상세는 EventDetailResponseSchema가 같은 이름의 값을 따로 채운다.
+    average_rating = fields.Float()
+    review_count = fields.Integer()
 
 
 class EventListResponseSchema(Schema):
@@ -155,6 +163,8 @@ class EventListResponseSchema(Schema):
     events = fields.List(fields.Nested(EventCardSchema))
 
 
+# PyCharm이 validate.Range 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 class MonthlyTopQuerySchema(QuerySchema):
     """월간 인기 행사 쿼리. month를 생략하면 KST 기준 이번 달이다."""
 

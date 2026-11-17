@@ -2,6 +2,7 @@
 from datetime import timedelta, datetime
 
 import pytest
+from sqlalchemy import event as sa_event
 
 from app.core.extensions import db
 from app.core.time import KST
@@ -306,3 +307,34 @@ def test_search_with_invalid_token_returns_401(client, refs):
     """검색에 잘못된 토큰을 보내면 401이다."""
     resp = client.get("/api/events?q=a", headers={"Authorization": "Bearer not.a.token"})
     assert resp.status_code == 401
+
+
+def test_event_cards_have_rating_and_review_count(client, refs, login, make_event):
+    """목록·월간 인기 카드에 평균 평점과 리뷰 수가 붙고, 리뷰 조회는 카드 수와 관계없이 한 번이다."""
+    first, _, _ = login(kakao_id=4001)
+    second, _, _ = login(kakao_id=4002)
+    rated, empty = make_event(), make_event()
+    post_review(client, first, rated.id, rating=4.0)
+    post_review(client, second, rated.id, rating=5.0)
+
+    review_queries = []
+
+    def count(conn, cursor, statement, *args):
+        if "FROM review" in statement:
+            review_queries.append(statement)
+
+    sa_event.listen(db.engine, "before_cursor_execute", count)
+    try:
+        cards = {c["id"]: c for c in client.get("/api/events", headers=first).get_json()["data"]["events"]}
+    finally:
+        sa_event.remove(db.engine, "before_cursor_execute", count)
+
+    assert (cards[rated.id]["average_rating"], cards[rated.id]["review_count"]) == (4.5, 2)
+    assert (cards[empty.id]["average_rating"], cards[empty.id]["review_count"]) == (0.0, 0)
+    assert len(review_queries) == 1
+
+    top = {c["id"]: c for c in client.get("/api/events/monthly-top").get_json()["data"]["events"]}
+    assert (top[rated.id]["average_rating"], top[rated.id]["review_count"]) == (4.5, 2)
+
+    detail = client.get(f"/api/events/{rated.id}", headers=first).get_json()["data"]
+    assert (detail["average_rating"], detail["review_count"]) == (4.5, 2)
