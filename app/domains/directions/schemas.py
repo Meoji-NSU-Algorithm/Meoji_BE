@@ -9,9 +9,7 @@ class DirectionsQuerySchema(QuerySchema):
     """길찾기 요청에 필요한 출발지 좌표와 이동 방식을 검증한다."""
 
     origin_lat = fields.Float(data_key="originLat", required=True, validate=validate.Range(min=-90, max=90),)
-
     origin_lng = fields.Float(data_key="originLng", required=True, validate=validate.Range(min=-180, max=180),)
-
     mode = fields.String(load_default="transit", validate=validate.OneOf(("car", "transit", "walk")),)
 
 
@@ -19,15 +17,10 @@ class DirectionsStepSchema(Schema):
     """개별 이동 단계의 응답 형식을 정의한다."""
 
     step_number = fields.Integer(data_key="stepNumber")
-
     type = fields.String()
-
     instruction = fields.String()
-
     duration_minutes = fields.Float(data_key="durationMinutes", allow_none=True,)
-
     distance_meters = fields.Float(data_key="distanceMeters", allow_none=True,)
-
     detail = fields.Raw(allow_none=True)
 
 
@@ -35,17 +28,10 @@ class DirectionsResponseSchema(Schema):
     """길찾기 결과의 응답 형식을 정의한다."""
 
     event_id = fields.Integer(data_key="eventId")
-
     mode = fields.String()
-
     departure_time = fields.String(data_key="departureTime")
-
     duration_minutes = fields.Float(data_key="durationMinutes")
-
     distance_meters = fields.Float(data_key="distanceMeters")
-
     arrival_time = fields.String(data_key="arrivalTime")
-
     path = fields.Raw(required=True)
-
     steps = fields.List(fields.Nested(DirectionsStepSchema))
