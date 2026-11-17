@@ -5,21 +5,17 @@ SyncScheduler가 공통 동작을 맡고, 축제(FestivalSyncScheduler)와 공�
 행으로 두어 재시작해도 주기가 유지된다. 시각은 모두 UTC(tzinfo 없는 naive datetime)로 비교한다.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from threading import Event, Lock, Thread
 
 from app.core.errors import BusinessException, ErrorCode
+from app.core.time import utcnow_naive
 from app.domains.tour.sync_service import TourSyncService
 from app.domains.tour.state_service import last_success_at, record_success
 
 
 SYNC_INTERVAL_SECONDS = 12 * 60 * 60
 SYNC_INTERVAL = timedelta(seconds=SYNC_INTERVAL_SECONDS)
-
-
-def _utcnow():
-    """DB 값과 같은 형식(UTC naive)의 현재 시각."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class SyncScheduler:
@@ -82,7 +78,7 @@ class SyncScheduler:
         with app.app_context():
             completed_at = last_success_at(self.state_id)
             due_at = completed_at + self.interval if completed_at else None
-            now = _utcnow()
+            now = utcnow_naive()
 
             if due_at and due_at > now:
                 # 대기 중 성공 시각이 바뀔 수 있으므로, 대기 후 바로 수집하지 않고
