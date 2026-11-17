@@ -5,10 +5,11 @@
 시각은 모두 UTC(tzinfo 없는 naive datetime)로 비교한다.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from threading import Event, Lock, Thread
 
 from app.core.errors import BusinessException, ErrorCode
+from app.core.time import utcnow_naive
 from app.domains.tour.sync_service import TourSyncService
 from app.domains.tour.state_service import last_success_at, record_success
 
@@ -57,7 +58,7 @@ class FestivalSyncScheduler:
             # 재시도 대기 중에는 DB에 접근하지 않는다. DB 장애로 실패했을 때
             # 즉시 재조회를 반복하며 오류 로그가 쌓이는 것을 막는다.
             # DB 값과 같은 형식(UTC naive)으로 현재 시각을 만들어 비교한다.
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            now = utcnow_naive()
             if retry_at and retry_at > now:
                 self._stop.wait((retry_at - now).total_seconds())
                 continue
@@ -73,7 +74,7 @@ class FestivalSyncScheduler:
                     # 최근 실패가 있으면 성공 기준 시각과 재시도 시각 중 늦은 쪽을 따른다.
                     if retry_at and (due_at is None or retry_at > due_at):
                         due_at = retry_at
-                    now = datetime.now(timezone.utc).replace(tzinfo=None)
+                    now = utcnow_naive()
                     if due_at and due_at > now:
                         # 대기 중 성공 시각이 바뀔 수 있으므로, 대기 후 바로 수집하지 않고
                         # 루프 처음에서 DB를 다시 읽어 판단한다.
@@ -90,7 +91,7 @@ class FestivalSyncScheduler:
                             app.logger.info("축제 자동 갱신 완료: 저장 %s건", report["saved"])
                         else:
                             # 이미 저장된 행은 유지하고 성공 시각은 갱신하지 않는다.
-                            retry_at = datetime.now(timezone.utc).replace(tzinfo=None) + SYNC_INTERVAL
+                            retry_at = utcnow_naive() + SYNC_INTERVAL
                             error = ErrorCode.TOUR_SYNC_INCOMPLETE
                             app.logger.error("%s: %s / 결과: %s", error.code, error.message, report)
                 if wait_seconds is not None:
@@ -100,11 +101,11 @@ class FestivalSyncScheduler:
             except BusinessException as error:
                 # 건별·목록 조회 실패는 sync_festivals()가 report에 모으므로
                 # 여기에는 그 밖의 위치에서 올라온 분류된 오류가 온다.
-                retry_at = datetime.now(timezone.utc).replace(tzinfo=None) + SYNC_INTERVAL
+                retry_at = utcnow_naive() + SYNC_INTERVAL
                 app.logger.error("%s: %s / 상세: %s", error.error_code.code, error.message, error.extra)
             except Exception:
                 # 예외가 스레드 밖으로 나가면 스케줄이 영구 중단되므로 모두 잡아 로그만 남긴다.
-                retry_at = datetime.now(timezone.utc).replace(tzinfo=None) + SYNC_INTERVAL
+                retry_at = utcnow_naive() + SYNC_INTERVAL
                 error = ErrorCode.TOUR_SYNC_SCHEDULE_FAILED
                 app.logger.exception("%s: %s", error.code, error.message)
 
