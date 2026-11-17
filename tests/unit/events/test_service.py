@@ -57,6 +57,15 @@ def test_list_excludes_ended_includes_today(make_event):
     assert ended.id not in ids(r) and r["total_count"] == 2
 
 
+def test_list_uses_injected_today(make_event):
+    """today를 넘기면 그 날짜 기준으로 종료 여부를 가른다. 종료일이 기준일이면 아직 표시한다."""
+    ended = make_event(start_date=TODAY - timedelta(days=5), end_date=TODAY - timedelta(days=1))
+    ends_today = make_event(start_date=TODAY - timedelta(days=5), end_date=TODAY)
+
+    assert set(ids(service.list_events(q(), today=TODAY))) == {ends_today.id}
+    assert set(ids(service.list_events(q(), today=TODAY - timedelta(days=1)))) == {ended.id, ends_today.id}
+
+
 def test_filter_category_sido(make_event, make_category, make_sido):
     c2, s2 = make_category("전시", 2), make_sido("11", "서울", "서울", 2)
     a = make_event()
