@@ -22,6 +22,7 @@ EXPECTED_ROUTES = {
     ("POST", "/api/bookmarks"): "api.bookmarks.create_bookmark",
     ("GET", "/api/bookmarks"): "api.bookmarks.list_my_bookmarks",
     ("DELETE", "/api/bookmarks/<int:event_id>"): "api.bookmarks.delete_bookmark",
+    ("GET", "/api/directions/<int:event_id>"): "api.directions.get_directions",
 }
 
 

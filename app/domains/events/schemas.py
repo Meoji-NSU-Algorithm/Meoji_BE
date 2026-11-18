@@ -23,6 +23,7 @@ class QuerySchema(Schema):
 
     @pre_load
     def normalize_query(self, data, **kwargs):
+        """쿼리 문자열(MultiDict)을 일반 dict로 바꾼다. 같은 키가 두 번 이상 오면 검증 오류로 처리한다."""
         if hasattr(data, "getlist"):
             duplicates = {
                 key: ["같은 파라미터는 한 번만 입력해주세요."]
