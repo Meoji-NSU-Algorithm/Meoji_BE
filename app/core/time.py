@@ -8,3 +8,8 @@ KST = timezone(timedelta(hours=9))
 def utcnow() -> datetime:
     """현재 시각을 UTC(시간대 정보 포함)로 반환한다. DB 저장 시각과 동의 시각에 쓴다."""
     return datetime.now(timezone.utc)
+
+
+def utcnow_naive() -> datetime:
+    """현재 시각을 시간대 정보 없는 UTC로 반환한다. DB의 DateTime 컬럼(naive UTC)과 비교하거나 저장할 때 쓴다."""
+    return utcnow().replace(tzinfo=None)

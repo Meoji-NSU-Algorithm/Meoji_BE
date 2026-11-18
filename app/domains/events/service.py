@@ -107,17 +107,18 @@ def monthly_top(query: dict, today: date | None = None) -> dict:
     }
 
 
-def list_events(query: dict) -> dict:
+def list_events(query: dict, today: date | None = None) -> dict:
     """종료되지 않은 행사를 조건에 맞게 검색해 한 페이지를 반환한다.
 
     Args:
         query: 스키마로 검증된 필터·검색어·sort·page·size.
+        today: 종료 여부를 가를 기준 날짜. 생략하면 KST 오늘이며 테스트에서 주입한다.
 
     Returns:
         total_count(필터 전체 건수), page, size, events. 범위를 넘은 페이지는 events가 빈 목록이다.
     """
     # 지난 행사는 DB에 보관하되 목록에서만 숨긴다. 종료일이 오늘이면 아직 표시한다.
-    conditions = [Event.end_date >= datetime.now(KST).date()]
+    conditions = [Event.end_date >= (today or datetime.now(KST).date())]
     if query["category_id"] is not None:
         conditions.append(Event.category_id == query["category_id"])
     if query["sido_code"] is not None:

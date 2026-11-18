@@ -12,7 +12,7 @@ TODAY = date(2026, 6, 15)
 
 
 def real_today():
-    """list_events는 today 주입을 지원하지 않아 실제 KST 오늘을 기준으로 한다."""
+    """today를 주입하지 않고 부르는 서비스 함수가 기준으로 삼는 실제 KST 오늘."""
     return datetime.now(KST).date()
 
 

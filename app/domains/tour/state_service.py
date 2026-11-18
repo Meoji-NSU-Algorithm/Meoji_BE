@@ -5,11 +5,12 @@
 세션 관리를 이 모듈에 모아 스케줄러가 DB 연결을 붙잡지 않게 한다.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.core.extensions import db
+from app.core.time import utcnow_naive
 from app.domains.tour.models import TourSyncState
 
 
@@ -32,7 +33,7 @@ def record_success() -> datetime:
     저장에 실패하면 예외가 전파되어 다음 주기에 전체를 다시 수집한다.
     """
     # 서버 OS의 시간대와 무관하게 UTC로 맞춰 tzinfo 없이 저장한다.
-    completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    completed_at = utcnow_naive()
     with Session(db.engine) as session, session.begin():
         # 동시에 기록하려는 경우 행 잠금으로 순서를 맞춘다. 행이 없으면 새로 만든다.
         state = session.get(TourSyncState, 1, with_for_update=True)
