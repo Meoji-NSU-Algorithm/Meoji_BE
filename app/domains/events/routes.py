@@ -7,7 +7,7 @@
 """
 
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required, verify_jwt_in_request
+from flask_jwt_extended import get_jwt_identity, jwt_required, verify_jwt_in_request
 
 from app.core.response import CommonResponse
 from app.domains.events.schemas import (
@@ -108,7 +108,10 @@ def get_event(event_id):
     """
     EmptyQuerySchema().load(request.args)
     params = EventPathSchema().load({"event_id": event_id})
-    event = event_service.get_event(params["event_id"], request_method=request.method)
+    # 같은 사용자의 같은 날 반복 조회는 조회수에 한 번만 센다.
+    event = event_service.get_event(
+        params["event_id"], request_method=request.method, user_id=int(get_jwt_identity()),
+    )
     # 행사 조회가 성공한 뒤에만 리뷰를 읽는다. 리뷰 API와 같은 서비스 함수를 써서
     # 정렬과 평점 계산을 일치시킨다.
     reviews = review_service.get_reviews_by_event(event.id)
