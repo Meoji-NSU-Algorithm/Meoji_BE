@@ -61,9 +61,7 @@ class ReviewCreateSchema(Schema):
     """
 
     event_id = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
-
     rating = fields.Float(required=True, validate=validate_rating)
-
     content = fields.String(required=True, validate=_content_validator())
 
     @pre_load
@@ -85,7 +83,6 @@ class ReviewUpdateSchema(Schema):
     """리뷰 수정 요청 본문. 보낸 필드만 수정하며 하나 이상 있어야 한다."""
 
     rating = fields.Float(required=False, validate=validate_rating)
-
     content = fields.String(required=False, validate=_content_validator())
 
     # 남길 기존 사진 key. 빠진 사진은 지워지고, 빈 목록이면 모두 지운다. 새 사진은 파일로 따로 보낸다.
