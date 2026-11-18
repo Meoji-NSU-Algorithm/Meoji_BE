@@ -4,8 +4,12 @@ from datetime import datetime, timedelta
 
 from app.core.errors import BusinessException, ErrorCode
 from app.core.time import KST
+
 from app.domains.directions.client import get_api_key, request_json
-from app.domains.directions.core.utils import valid_number_or_none
+from app.domains.directions.core.utils import (
+    valid_number_or_none,
+    remove_consecutive_duplicates,
+)
 
 
 def build_transit_steps(path):
@@ -129,6 +133,82 @@ def build_transit_steps(path):
 
     return steps
 
+def build_transit_path(path):
+    """ODsay 응답에서 지도에 표시할 이동 경로 좌표를 추출한다."""
+
+    parts = path.get("rps", [])
+
+    if not isinstance(parts, list):
+        return []
+
+    result = []
+
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+
+        traffic_type = part.get("trafficType")
+
+        if traffic_type not in (1, 2, 3):
+            continue
+
+        coordinates = []
+
+        if part.get("trafficType") == 3:
+            routes = part.get("routes", [])
+
+            if not isinstance(routes, list):
+                continue
+
+            for route in routes:
+                if not isinstance(route, dict):
+                    continue
+
+                points = route.get("xyInfos", [])
+
+                if not isinstance(points, list):
+                    continue
+
+                for point in points:
+                    if not isinstance(point, dict):
+                        continue
+
+                    lng = valid_number_or_none(point.get("x"))
+                    lat = valid_number_or_none(point.get("y"))
+
+                    if lat is not None and lng is not None:
+                        coordinates.append([lat, lng])
+
+        else:
+            graph = part.get("graph")
+
+            if isinstance(graph, str):
+                for point in graph.split("|"):
+                    try:
+                        lng, lat = map(float, point.split())
+                    except (TypeError, ValueError):
+                        continue
+
+                    lat = valid_number_or_none(lat)
+                    lng = valid_number_or_none(lng)
+
+                    if lat is not None and lng is not None:
+                        coordinates.append([lat, lng])
+
+        if coordinates:
+            result.append({
+                "type": (
+                    "SUBWAY"
+                    if part.get("trafficType") == 1
+                    else "BUS"
+                    if part.get("trafficType") == 2
+                    else "WALK"
+                ),
+                "coordinates": remove_consecutive_duplicates(coordinates),
+            })
+
+    return result
+
 
 def get_transit_directions(event, origin_lat, origin_lng, departure_time):
     """ODsay 대중교통 길찾기 API를 호출하고 결과를 반환한다."""
@@ -193,6 +273,11 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
             departure_time + timedelta(minutes=duration)
         ).isoformat()
 
+    transit_path = build_transit_path(path)
+
+    if not transit_path:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
     return {
         "event_id": event.id,
         "mode": "transit",
@@ -200,5 +285,6 @@ def get_transit_directions(event, origin_lat, origin_lng, departure_time):
         "duration_minutes": duration,
         "distance_meters": distance,
         "arrival_time": arrival_time,
+        "path": transit_path,
         "steps": build_transit_steps(path),
     }

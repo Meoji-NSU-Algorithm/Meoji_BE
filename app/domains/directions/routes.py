@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
 from app.core.response import CommonResponse
+
 from app.domains.directions import service as directions_service
 from app.domains.directions.schemas import (
     DirectionsQuerySchema,

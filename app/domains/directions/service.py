@@ -6,6 +6,7 @@ from datetime import datetime
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
 from app.core.time import KST
+
 from app.domains.events.models import Event
 from app.domains.directions import car_service, transit_service, walk_service
 
