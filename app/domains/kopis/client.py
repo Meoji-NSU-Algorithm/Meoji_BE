@@ -18,6 +18,12 @@ BASE_URL = "https://kopis.or.kr/openApi/restful"
 ROWS = 100  # 목록 한 페이지 최대 건수
 MAX_PAGES = 100  # 페이지 끝을 못 찾아도 멈추도록 상한을 둔다(2개월 전국 약 29페이지).
 TIMEOUT_SECONDS = 15
+# 방화벽이 requests 기본 User-Agent(python-requests)를 HTTP 400 "Request Blocked"로 막는다.
+# 브라우저 User-Agent로 보내면 통과한다(같은 키·같은 IP로 확인).
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+)
 # 공식 한도 수치는 공개돼 있지 않다(초과 시 키 사용 중지). 0.2초 간격에서 HTTP 400 차단이 나 늘렸다.
 REQUEST_DELAY_SECONDS = 0.6
 
@@ -48,6 +54,9 @@ class KopisAPI:
             raise BusinessException(ErrorCode.KOPIS_API_KEY_MISSING)
         self.service_key = service_key
         self.session = session or requests.Session()
+        # 주입된 session은 건드리지 않고, 직접 만든 session에만 User-Agent를 넣는다.
+        if session is None:
+            self.session.headers["User-Agent"] = USER_AGENT
         self._sleep = sleep
         self._requested = False
 

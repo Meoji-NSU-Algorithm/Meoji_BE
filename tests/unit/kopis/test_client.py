@@ -119,3 +119,16 @@ def test_http_error_keeps_api_error_body():
     with pytest.raises(BusinessException) as e:
         KopisAPI(service_key="k", session=session, sleep=lambda s: None).facility("FC1")
     assert e.value.extra == {"reason": "http_error", "status": 400, "path": "prfplc/FC1", "returncode": "99", "errmsg": "TOO MANY"}
+
+
+def test_own_session_sends_browser_user_agent(app_ctx):
+    """requests 기본 User-Agent는 KOPIS 방화벽이 막는다."""
+    api = KopisAPI(service_key="k")
+    assert api.session.headers["User-Agent"] == kc.USER_AGENT
+    assert "python-requests" not in api.session.headers["User-Agent"]
+
+
+def test_injected_session_is_left_untouched():
+    session = requests.Session()
+    KopisAPI(service_key="k", session=session)
+    assert session.headers["User-Agent"] != kc.USER_AGENT
