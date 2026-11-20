@@ -47,7 +47,6 @@ def list_categories():
 
 
 @events_bp.get("/sidos")
-@jwt_required()
 def list_sidos():
     """시도 선택지 목록을 반환한다.
 
