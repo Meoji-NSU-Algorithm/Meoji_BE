@@ -6,10 +6,7 @@ from app.core.errors import BusinessException, ErrorCode
 from app.core.time import KST
 
 from app.domains.directions.client import get_api_key, request_json
-from app.domains.directions.core.utils import (
-    valid_number_or_none,
-    remove_consecutive_duplicates,
-)
+from app.domains.directions.core.utils import (valid_number_or_none)
 
 
 def build_transit_steps(path):
@@ -204,7 +201,7 @@ def build_transit_path(path):
                     if part.get("trafficType") == 2
                     else "WALK"
                 ),
-                "coordinates": remove_consecutive_duplicates(coordinates),
+                "coordinates": coordinates
             })
 
     return result

@@ -5,10 +5,7 @@ from datetime import timedelta
 from app.core.errors import BusinessException, ErrorCode
 
 from app.domains.directions.client import get_api_key, request_json
-from app.domains.directions.core.utils import (
-    valid_number_or_none,
-    remove_consecutive_duplicates,
-)
+from app.domains.directions.core.utils import (valid_number_or_none)
 
 
 def build_walk_steps(route_data):
@@ -123,7 +120,7 @@ def build_walk_path(route_data):
             if lat is not None and lng is not None:
                 coordinates.append([lat, lng])
 
-    return remove_consecutive_duplicates(coordinates)
+    return coordinates
 
 
 def get_walk_directions(event, origin_lat, origin_lng, departure_time):
