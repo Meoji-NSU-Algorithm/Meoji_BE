@@ -41,6 +41,7 @@ class SyncScheduler:
         self._start_lock = Lock()
         self._started = False
         self._stop = Event()
+        self._thread = None  # start()가 만든 수집 스레드. join()에서 기다릴 때 쓴다.
 
     def sync(self):
         """수집을 실행하고 report(`complete` 키 포함)를 반환한다."""
@@ -65,7 +66,17 @@ class SyncScheduler:
             # 수집은 오래 걸리므로 서버 시작과 요청 처리를 막지 않도록 daemon 스레드로 돌린다.
             thread = Thread(target=self._run_loop, args=(app,), daemon=True, name=self.name)
             thread.start()
+            self._thread = thread
             self._started = True
+
+    def stop(self):
+        """수집 루프에 종료를 알린다. 진행 중인 수집은 끝난 뒤에 루프가 끝난다."""
+        self._stop.set()
+
+    def join(self, timeout=None):
+        """수집 스레드가 끝날 때까지 기다린다. 시작하지 않았으면 바로 반환한다."""
+        if self._thread is not None:
+            self._thread.join(timeout)
 
     def run_once(self, app):
         """수집할 때가 됐으면 한 번 수집하고, 다음 판단까지 기다릴 초를 반환한다.
