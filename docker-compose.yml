@@ -1,0 +1,58 @@
+name: meoji
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      # -h 127.0.0.1(TCP)를 써야 초기화용 임시 서버를 정상으로 착각하지 않는다.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    build: .
+    image: meoji-be:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # slim 이미지에는 curl이 없어 python으로 호출한다. 503이면 예외가 나 실패로 처리된다.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  scheduler:
+    build: .
+    image: meoji-be:local
+    command: ["python", "run_scheduler.py"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+    # 수집 중에 받은 종료 신호는 수집이 끝난 뒤 처리되므로 기본 10초보다 길게 둔다.
+    stop_grace_period: 120s
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
