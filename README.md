@@ -93,6 +93,42 @@ pytest
 - 행사 API의 로그인(JWT) 정책: 홈 화면용인 카테고리, 월간 TOP, **검색·필터 파라미터가 없는 목록**은 토큰 없이 호출할 수 있습니다. 검색·필터가 붙은 목록(`q`, `title`, `venue`, `tag`, `category_id`, `sido_code`, `is_free`, `start_date`, `end_date` 중 하나라도 값이 있는 경우), 시도 목록, 행사 상세는 토큰이 없으면 401입니다.
 - 404/405 같은 HTTP 에러의 `code`가 `COMMON_NOT_FOUND`, `COMMON_METHOD_NOT_ALLOWED` 형식으로 통일되었습니다.
 
+## 1-4. 운영 배포 (Docker + Caddy, EC2)
+
+운영에서는 `docker compose`로 `caddy`(HTTPS 정문), `api`(gunicorn), `scheduler`, `db`(MySQL)를 함께 실행합니다. 밖에서 열리는 포트는 Caddy의 80, 443뿐입니다. api(`127.0.0.1:8000`)와 DB는 서버 밖에서 접근할 수 없습니다.
+
+### 서버 준비 (한 번만)
+1. EC2: Ubuntu 24.04, 서울 리전, t3.small(2GB) 이상, 디스크 20~30GB. 키 페어(`.pem`)는 git에 올리지 않습니다.
+2. 보안 그룹: 22번(SSH)은 **내 IP만**, 80번과 443번은 모두 허용합니다. 3306, 8000은 열지 않습니다. 80번은 인증서 발급 확인에도 쓰이므로 닫으면 안 됩니다.
+3. 탄력적 IP를 연결하고, 도메인 DNS에 `api` A 레코드를 그 IP로 추가합니다. (Cloudflare DNS를 쓰면 처음에는 프록시(주황 구름)를 끄고 인증서 발급을 확인한 뒤에 켭니다.)
+4. 서버에 Docker 공식 apt 저장소로 Docker와 compose 플러그인을 설치하고, 저장소를 clone합니다.
+
+### `.env` 작성 (서버에서, git에는 올리지 않음)
+`.env.example`을 복사해 운영 값으로 채웁니다.
+- `API_DOMAIN`: api 도메인(예: `api.example.com`)
+- `MYSQL_DATABASE`, `MYSQL_USER`(root 불가), `MYSQL_PASSWORD`(영문자·숫자만)
+- `KAKAO_REDIRECT_URI`: 운영 주소로 바꾸고 카카오 개발자 콘솔의 등록 값도 같게 맞춥니다.
+- `FLASK_DEBUG`: 운영에서는 `1`로 두지 않습니다.
+- `TOURAPI_KEY`, `KOPIS_API_KEY`: 행사 자동 수집용 키입니다. `KOPIS_API_KEY`를 비워 두면 공연 수집이 시작되지 않고, `TOURAPI_KEY`가 없으면 축제 수집이 실패합니다.
+- 리뷰 이미지 저장소(Cloudflare R2): `S3_ENDPOINT=https://<계정ID>.r2.cloudflarestorage.com`, `S3_REGION=auto`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`. `S3_PUBLIC_URL`은 비워 둡니다.
+
+### 실행 순서
+순서가 중요합니다. 테이블이 없을 때 scheduler가 먼저 시작되면 수집 실패를 12시간 뒤 재시도로 넘깁니다.
+```bash
+docker compose up -d --wait db
+docker compose run --rm api flask db upgrade
+docker compose up -d
+```
+
+### 확인
+```bash
+docker compose ps                              # db, api가 healthy, 나머지가 running
+curl https://api.example.com/api/health        # 200
+```
+- 외부 모니터링(UptimeRobot 등)에는 `https://<API_DOMAIN>/api/health`를 등록합니다.
+- 코드를 업데이트한 뒤: `git pull` → `docker compose build` → `docker compose run --rm api flask db upgrade` → `docker compose up -d`
+- Caddy 인증서는 `caddy_data` 볼륨에 저장됩니다. `docker compose down -v`로 볼륨을 지우지 마세요(DB 데이터도 함께 지워집니다).
+
 ## 2. Git 브랜치 전략
 
 - **`main`**: 항상 배포 가능한 안정 버전만 유지합니다. `develop`에서 통합 테스트를 통과한 뒤 팀장이 직접 merge합니다.
