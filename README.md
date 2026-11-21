@@ -106,6 +106,7 @@ pytest
 ### `.env` 작성 (서버에서, git에는 올리지 않음)
 `.env.example`을 복사해 운영 값으로 채웁니다.
 - `API_DOMAIN`: api 도메인(예: `api.example.com`)
+- `CORS_ORIGINS`: FE 배포 주소(예: `https://meoji.example.com`, 여러 개면 쉼표로 구분, 끝에 `/` 없이). 비우면 브라우저에서 API 호출이 막힙니다.
 - `MYSQL_DATABASE`, `MYSQL_USER`(root 불가), `MYSQL_PASSWORD`(영문자·숫자만)
 - `KAKAO_REDIRECT_URI`: 운영 주소로 바꾸고 카카오 개발자 콘솔의 등록 값도 같게 맞춥니다.
 - `FLASK_DEBUG`: 운영에서는 `1`로 두지 않습니다.

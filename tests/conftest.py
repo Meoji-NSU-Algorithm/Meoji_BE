@@ -32,6 +32,7 @@ class TestConfig(Config):
     KAKAO_CLIENT_ID = "test-kakao-client"
     KAKAO_CLIENT_SECRET = None
     KAKAO_REDIRECT_URI = "http://localhost/callback"
+    CORS_ORIGINS = ["http://localhost:5174"]
 
 
 @pytest.fixture(scope="session")
