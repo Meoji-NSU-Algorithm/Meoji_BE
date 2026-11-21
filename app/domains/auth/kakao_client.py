@@ -66,7 +66,7 @@ def get_kakao_access_token(code: str) -> str:
     try:
         resp = requests.post(KAKAO_TOKEN_URL, data=data, timeout=TIMEOUT)
     except requests.RequestException:
-        current_app.logger.warning("Kakao token request error", exc_info=True)
+        current_app.logger.warning("카카오 토큰 요청 중 통신 오류", exc_info=True)
         raise BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE)
 
     if resp.status_code != 200:
@@ -78,7 +78,7 @@ def get_kakao_access_token(code: str) -> str:
     except (ValueError, AttributeError):
         token = None
     if not isinstance(token, str) or not token:
-        current_app.logger.error("Kakao token response invalid: status=%s", resp.status_code)
+        current_app.logger.error("카카오 토큰 응답 이상(access_token 없음): status=%s", resp.status_code)
         raise BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE)
     return token
 
@@ -93,7 +93,7 @@ def _raise_token_error(resp) -> None:
     body = _parse_error_body(resp)
     if body is None:
         # JSON이 아닌 오류 본문은 게이트웨이/장애 응답일 가능성이 높다.
-        current_app.logger.warning("Kakao token request failed: status=%s (non-JSON body)", status)
+        current_app.logger.warning("카카오 토큰 요청 실패: status=%s (JSON이 아닌 응답)", status)
         raise BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE)
 
     # 예상 밖 타입(list 등)이 와도 set 멤버십 검사에서 TypeError가 나지 않도록 문자열만 인정한다.
@@ -112,12 +112,12 @@ def _raise_token_error(resp) -> None:
 
     if status >= 500 or status == 429:
         current_app.logger.warning(
-            "Kakao token request unavailable: status=%s error=%s error_code=%s error_description=%s", *fields)
+            "카카오 토큰 요청 일시 불가: status=%s error=%s error_code=%s error_description=%s", *fields)
         raise BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE)
 
     # 나머지 4xx는 code 만료/재사용/redirect_uri 불일치 등 클라이언트 쪽 원인이다.
     current_app.logger.warning(
-        "Kakao token request failed: status=%s error=%s error_code=%s error_description=%s", *fields)
+        "카카오 토큰 요청 실패: status=%s error=%s error_code=%s error_description=%s", *fields)
     raise BusinessException(ErrorCode.KAKAO_TOKEN_REQUEST_FAILED)
 
 
@@ -142,7 +142,7 @@ def get_kakao_user_info(kakao_access_token: str) -> dict:
         body = resp.json()
     except (requests.RequestException, ValueError):
         # 네트워크 오류, 4xx/5xx(HTTPError), JSON이 아닌 응답
-        current_app.logger.warning("Kakao user info request failed", exc_info=True)
+        current_app.logger.warning("카카오 사용자 정보 요청 실패", exc_info=True)
         raise BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE)
 
     # 동의하지 않은 항목은 키 자체가 없을 수 있어, 필수 항목이 없으면 KAKAO_PROFILE_INVALID로 응답한다.
@@ -182,4 +182,4 @@ def unlink_kakao_user(kakao_id: int) -> None:
         )
         resp.raise_for_status()
     except requests.RequestException:
-        current_app.logger.warning("Kakao unlink failed: kakao_id=%s", kakao_id, exc_info=True)
+        current_app.logger.warning("카카오 연결 끊기 실패: kakao_id=%s", kakao_id, exc_info=True)

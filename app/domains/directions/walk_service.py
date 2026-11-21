@@ -3,8 +3,9 @@
 from datetime import timedelta
 
 from app.core.errors import BusinessException, ErrorCode
+
 from app.domains.directions.client import get_api_key, request_json
-from app.domains.directions.core.utils import valid_number_or_none
+from app.domains.directions.core.utils import (valid_number_or_none)
 
 
 def build_walk_steps(route_data):
@@ -90,6 +91,38 @@ def build_walk_steps(route_data):
     return steps
 
 
+def build_walk_path(route_data):
+    """ODsay 응답에서 지도에 표시할 도보 경로 좌표를 추출한다."""
+
+    routes = route_data.get("routes", [])
+
+    if not isinstance(routes, list):
+        return []
+
+    coordinates = []
+
+    for route in routes:
+        if not isinstance(route, dict):
+            continue
+
+        points = route.get("coordinate", [])
+
+        if not isinstance(points, list):
+            continue
+
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+
+            lng = valid_number_or_none(point.get("x"))
+            lat = valid_number_or_none(point.get("y"))
+
+            if lat is not None and lng is not None:
+                coordinates.append([lat, lng])
+
+    return coordinates
+
+
 def get_walk_directions(event, origin_lat, origin_lng, departure_time):
     """ODsay 도보 길찾기 API를 호출하고 추천 경로를 반환한다."""
 
@@ -141,6 +174,11 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
 
     arrival_time = departure_time + timedelta(seconds=duration)
 
+    walk_path = build_walk_path(route_data)
+
+    if not walk_path:
+        raise BusinessException(ErrorCode.ROUTE_NOT_FOUND)
+
     return {
         "event_id": event.id,
         "mode": "walk",
@@ -148,5 +186,6 @@ def get_walk_directions(event, origin_lat, origin_lng, departure_time):
         "duration_minutes": round(duration / 60),
         "distance_meters": distance,
         "arrival_time": arrival_time.isoformat(),
+        "path": walk_path,
         "steps": build_walk_steps(route_data),
     }

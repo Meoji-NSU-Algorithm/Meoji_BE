@@ -33,7 +33,7 @@ def test_inserts_with_all_fields(seeded):
         list_item("2", lclsSystm3="EV020100", lDongRegnCd="11", title="공연", eventenddate="20261001"),
         list_item("3", lclsSystm3="EV010500", lDongRegnCd="36110", eventstartdate="20260101", eventenddate="20261231"),
     ]
-    common = {"1": {"overview": "불꽃놀이와 가족 공연, 꽃 구경", "homepage": '<a href="https://ex.com">x</a>',
+    common = {"1": {"overview": "불꽃놀이와 가족 가족 공연 공연, 벚꽃 구경", "homepage": '<a href="https://ex.com">x</a>',
                     "addr1": " 천안시 ", "firstimage": "http://i/1.jpg"}}
     intro = {"1": {"usetimefestival": "성인 5,000원", "eventplace": "공원", "sponsor1": "시청", "playtime": "10시"}}
     report, _ = run(items, common, intro)
@@ -79,7 +79,7 @@ def test_upsert_no_duplicates_and_fields_update(seeded):
     db.session.commit()
     report, _ = run(
         [list_item("1", title="새 제목", eventenddate="20261010", modifiedtime="20261020000000")],
-        {"1": {"overview": "가족 야간 체험"}},
+        {"1": {"overview": "가족 가족 야간 체험 체험"}},
         {"1": {"usetimefestival": "3,000원"}},
     )
     assert report["complete"] and report["saved"] == 1
@@ -94,10 +94,10 @@ def test_upsert_no_duplicates_and_fields_update(seeded):
 
 
 def test_rerun_without_overview_keeps_tags_and_description(seeded):
-    run([list_item("1")], {"1": {"overview": "음악"}})
+    run([list_item("1")], {"1": {"overview": "야간"}})
     run([list_item("1")], {"1": {}})
     e = events()["1"]
-    assert e.description == "음악" and [t.name for t in e.tags] == ["음악"]
+    assert e.description == "야간" and [t.name for t in e.tags] == ["야간"]
 
 
 def test_empty_string_field_nulls_existing(seeded):
@@ -107,7 +107,7 @@ def test_empty_string_field_nulls_existing(seeded):
 
 
 def test_empty_overview_clears_tags(seeded):
-    run([list_item("1")], {"1": {"overview": "음악"}})
+    run([list_item("1")], {"1": {"overview": "야간"}})
     run([list_item("1")], {"1": {"overview": ""}})
     assert events()["1"].tags == []
 
@@ -184,7 +184,7 @@ def test_missing_tag_seed(seeded):
     from app.domains.events.models import Tag
     db.session.query(Tag).filter_by(name="꽃").delete()
     db.session.commit()
-    report, _ = run([list_item("1")], {"1": {"overview": "꽃 축제"}})
+    report, _ = run([list_item("1")], {"1": {"overview": "벚꽃 축제"}})
     assert codes(report) == ["TOUR_SYNC_SEED_MISSING"] and events() == {}
 
 
@@ -217,12 +217,12 @@ def test_intro_failure_skips_item(seeded):
 
 
 def test_failed_update_rolls_back_existing_row(seeded):
-    run([list_item("1")], {"1": {"overview": "음악"}})
+    run([list_item("1")], {"1": {"overview": "야간"}})
     # 새 응답은 잘못된 날짜 -> 전체 롤백, 기존 값 유지(태그 포함).
-    report, _ = run([list_item("1", title="바뀜")], {"1": {"overview": "가족"}}, {"1": {"eventenddate": "20260230"}})
+    report, _ = run([list_item("1", title="바뀜")], {"1": {"overview": "가족 가족"}}, {"1": {"eventenddate": "20260230"}})
     assert not report["complete"]
     e = events()["1"]
-    assert e.title == "축제1" and [t.name for t in e.tags] == ["음악"]
+    assert e.title == "축제1" and [t.name for t in e.tags] == ["야간"]
 
 
 @pytest.mark.parametrize("override,reason", [

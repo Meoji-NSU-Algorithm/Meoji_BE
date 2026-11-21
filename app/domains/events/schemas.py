@@ -23,6 +23,7 @@ class QuerySchema(Schema):
 
     @pre_load
     def normalize_query(self, data, **kwargs):
+        """쿼리 문자열(MultiDict)을 일반 dict로 바꾼다. 같은 키가 두 번 이상 오면 검증 오류로 처리한다."""
         if hasattr(data, "getlist"):
             duplicates = {
                 key: ["같은 파라미터는 한 번만 입력해주세요."]
@@ -41,6 +42,8 @@ class EmptyQuerySchema(QuerySchema):
     pass
 
 
+# PyCharm이 validate.Range 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 class EventPathSchema(Schema):
     """행사 상세 경로 파라미터."""
 
@@ -67,6 +70,8 @@ class SidoOptionSchema(Schema):
     sort_order = fields.Integer()
 
 
+# PyCharm이 validate.Length/Regexp/Range/OneOf 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 class EventListQuerySchema(QuerySchema):
     """행사 목록 쿼리. 모든 조건은 AND로 결합된다."""
 
@@ -159,6 +164,8 @@ class EventListResponseSchema(Schema):
     events = fields.List(fields.Nested(EventCardSchema))
 
 
+# PyCharm이 validate.Range 생성자를 Validator.__call__로 착각하는 오탐을 끈다.
+# noinspection PyArgumentList
 class MonthlyTopQuerySchema(QuerySchema):
     """월간 인기 행사 쿼리. month를 생략하면 KST 기준 이번 달이다."""
 
