@@ -50,7 +50,7 @@ def list_categories():
 def list_sidos():
     """시도 선택지 목록을 반환한다.
 
-    GET /api/events/sidos. JWT 필요. 쿼리 파라미터는 받지 않는다. 성공 시 200.
+    GET /api/events/sidos. JWT 불필요. 쿼리 파라미터는 받지 않는다. 성공 시 200.
     """
     EmptyQuerySchema().load(request.args)
     sidos = event_service.list_sidos()
