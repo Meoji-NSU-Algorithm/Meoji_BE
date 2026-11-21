@@ -96,6 +96,7 @@ class ReviewUpdateSchema(Schema):
 
     @validates_schema
     def validate_update(self, data, **kwargs):
+        """수정 요청에 바꿀 필드가 하나도 없으면(빈 body) 오류로 처리한다."""
         if not data:
             raise ValidationError("수정할 값이 없습니다.")
 

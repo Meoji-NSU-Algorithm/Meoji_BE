@@ -130,6 +130,7 @@ def build_transit_steps(path):
 
     return steps
 
+
 def build_transit_path(path):
     """ODsay 응답에서 지도에 표시할 이동 경로 좌표를 추출한다."""
 
@@ -146,12 +147,14 @@ def build_transit_path(path):
 
         traffic_type = part.get("trafficType")
 
-        if traffic_type not in (1, 2, 3):
+        # 지하철, 버스, 도보, 열차, 고속버스, 시외버스
+        if traffic_type not in (1, 2, 3, 4, 5, 6):
             continue
 
         coordinates = []
 
-        if part.get("trafficType") == 3:
+        # 도보는 routes 안의 xyInfos에서 좌표 추출
+        if traffic_type == 3:
             routes = part.get("routes", [])
 
             if not isinstance(routes, list):
@@ -176,6 +179,7 @@ def build_transit_path(path):
                     if lat is not None and lng is not None:
                         coordinates.append([lat, lng])
 
+        # 지하철, 버스, 시외 교통은 graph에서 좌표 추출
         else:
             graph = part.get("graph")
 
@@ -196,15 +200,18 @@ def build_transit_path(path):
             result.append({
                 "type": (
                     "SUBWAY"
-                    if part.get("trafficType") == 1
+                    if traffic_type == 1
                     else "BUS"
-                    if part.get("trafficType") == 2
+                    if traffic_type == 2
                     else "WALK"
+                    if traffic_type == 3
+                    else "OTHER"
                 ),
-                "coordinates": coordinates
+                "coordinates": coordinates,
             })
 
     return result
+
 
 
 def get_transit_directions(event, origin_lat, origin_lng, departure_time):
