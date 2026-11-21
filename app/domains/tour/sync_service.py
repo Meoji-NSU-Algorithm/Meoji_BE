@@ -19,6 +19,7 @@ from app.core.extensions import db
 from app.core.time import KST
 from app.domains.events.models import Category, Event, Sido, Tag
 from app.domains.tour.client import TourAPI
+from app.domains.tour.tag_terms import match_tags
 
 # TourAPI 필드 -> Event 컬럼. 응답에 필드가 없으면 기존 값을 유지하고 빈 문자열이면 NULL로 갱신한다.
 TEXT_FIELDS = {
@@ -35,21 +36,6 @@ TEXT_FIELDS = {
     "homepage": "homepage_url",
     "lclsSystm3": "lcls_code",
 }
-
-# 소개글에서 찾을 태그 사전. 여기 없는 단어는 태그로 만들지 않는다.
-TAG_KEYWORDS = (
-    "불꽃놀이",
-    "푸드트럭",
-    "야간",
-    "체험",
-    "가족",
-    "공연",
-    "전시",
-    "음악",
-    "꽃",
-    "먹거리",
-)
-
 
 # homepage에는 URL 외에 <a> 태그, 설명 문구, 여러 주소가 섞여 올 수 있다.
 # href가 있으면 그 값을, 없으면 처음 나오는 주소를 쓴다.
@@ -388,7 +374,7 @@ class TourSyncService:
                     row.price, row.is_free = _fee(row.fee_text)
                 # 소개글이 응답에 있을 때만 태그를 다시 계산해 교체한다.
                 if "overview" in merged:
-                    wanted = [name for name in TAG_KEYWORDS if name in (row.description or "")]
+                    wanted = match_tags(row.title, row.description)
                     tags = list(session.scalars(select(Tag).where(Tag.name.in_(wanted)))) if wanted else []
                     if len(tags) != len(wanted):
                         raise BusinessException(
