@@ -37,6 +37,10 @@ def create_app(config_class: type = Config) -> Flask:
     register_error_handlers(app)
     register_blueprints(app)
 
+    # flask --app wsgi retag-events: 태그 사전을 고친 뒤 이미 저장된 행사의 태그를 다시 계산한다.
+    from app.domains.tour.retag import retag_events_command
+    app.cli.add_command(retag_events_command)
+
     return app
 
 
