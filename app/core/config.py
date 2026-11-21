@@ -65,6 +65,12 @@ class Config:
     # 요청 본문 한도. 리뷰 사진 5장 x 한 장 한도(10MB)에 multipart 여유 1MB. 넘으면 다 받기 전에 413.
     MAX_CONTENT_LENGTH = 51 * 1024 * 1024
 
+    # --- CORS ---
+
+    # 브라우저에서 API를 호출할 FE 주소 목록(쉼표로 구분). 예: https://meoji.vercel.app,http://localhost:5174
+    # 비어 있으면 어떤 다른 출처도 허용하지 않는다(같은 출처 요청만 동작).
+    CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+
 
 # 기동 시 반드시 채워져 있어야 하는 설정 키. KAKAO_CLIENT_SECRET, TOURAPI_KEY, KOPIS_API_KEY는 선택이라 제외한다.
 REQUIRED_CONFIG_KEYS = (

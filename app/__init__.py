@@ -1,5 +1,6 @@
 """Flask 앱 팩토리. 확장 초기화, 오류 핸들러와 API Blueprint 등록을 담당한다."""
 from flask import Flask
+from flask_cors import CORS
 from app.core.config import Config, validate_required_config
 
 from app.core.errors.handlers import register_error_handlers
@@ -28,6 +29,15 @@ def create_app(config_class: type = Config) -> Flask:
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+
+    # FE가 다른 주소에 배포되어도 브라우저가 API 응답을 읽을 수 있게 허용 출처를 지정한다.
+    # Authorization 헤더와 multipart 업로드 전에 오는 OPTIONS(preflight)도 여기서 응답한다.
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}},
+        allow_headers=["Authorization", "Content-Type"],
+        methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    )
 
     # jwt_callbacks는 import되는 순간 데코레이터로 콜백이 jwt에 등록되므로 import 자체가 목적이다.
     # 빠지면 로그아웃된 토큰이 계속 통과하고 JWT 오류 응답도 공통 형식을 벗어난다.
