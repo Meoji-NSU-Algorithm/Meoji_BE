@@ -1,0 +1,5 @@
+# API_DOMAIN이 있으면 그 도메인으로 HTTPS 인증서를 자동 발급·갱신한다.
+# 비어 있으면 localhost로 동작한다(로컬 확인용, Caddy 자체 인증서 사용).
+{$API_DOMAIN:localhost} {
+	reverse_proxy api:8000
+}
