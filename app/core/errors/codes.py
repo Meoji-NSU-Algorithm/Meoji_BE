@@ -28,7 +28,7 @@ class ErrorCode(Enum):
     COMMON_INTERNAL_ERROR = (500, "알 수 없는 서버 오류")
 
     # --- EVENT ---
-    # 상세 조회 대상 행사나 리뷰 조회 대상 행사가 없을 때
+    # 행사 상세 조회, 리뷰 작성, 북마크 추가 대상 행사가 없을 때 (리뷰 목록 조회는 빈 목록을 돌려주므로 해당 없음)
     EVENT_NOT_FOUND = (404, "행사를 찾을 수 없습니다.")
 
     # --- DIRECTIONS ---
@@ -62,6 +62,14 @@ class ErrorCode(Enum):
     # 예약 스레드에서 DB 상태 조회·저장 등 예상 못한 예외가 난 경우.
     # traceback은 로그에만 남기고 다음 주기에 다시 시도한다.
     TOUR_SYNC_SCHEDULE_FAILED = (500, "정기 축제 갱신 중 오류가 발생했습니다.")
+
+    # --- KOPIS ---
+    # 공연예술통합전산망 공연 수집. 건별 저장 오류는 TOUR_SYNC_* 코드를 같이 쓴다.
+    KOPIS_API_KEY_MISSING = (500, "KOPIS_API_KEY가 설정되지 않았습니다.")
+    KOPIS_REQUEST_FAILED = (502, "KOPIS API 요청에 실패했습니다.")
+    KOPIS_INVALID_RESPONSE = (502, "KOPIS API 응답이 올바르지 않습니다.")
+    KOPIS_SYNC_INCOMPLETE = (500, "공연 데이터를 모두 갱신하지 못했습니다.")
+    KOPIS_SYNC_SCHEDULE_FAILED = (500, "정기 공연 갱신 중 오류가 발생했습니다.")
 
     # --- AUTH ---
     # 원인을 세분화하지 않은 일반 인증 실패. 토큰이 없는 경우에도 사용한다.

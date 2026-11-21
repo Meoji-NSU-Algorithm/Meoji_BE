@@ -1,7 +1,9 @@
 """인증 도메인 모델. 로그아웃된 JWT를 기록하는 TokenBlocklist를 정의한다."""
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.core.extensions import db
+from app.core.time import utcnow
+
 
 class TokenBlocklist(db.Model):
     """폐기된 JWT의 jti를 저장하는 블록리스트.
@@ -17,6 +19,4 @@ class TokenBlocklist(db.Model):
     jti = db.Column(db.String(36), unique=True, nullable=False, index=True)
 
     # 블록리스트에 등록된 시각(UTC)
-    created_at: datetime = db.Column(
-        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
-    )
+    created_at: datetime = db.Column(db.DateTime, nullable=False, default=utcnow)

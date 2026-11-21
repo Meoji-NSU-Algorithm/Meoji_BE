@@ -148,7 +148,7 @@ def test_incomplete_does_not_record_and_retries_after_interval_without_db(seeded
 def test_incomplete_then_retry_after_wait_succeeds(seeded):
     s = make(max_waits=2)
     cls, svc = fake_service([bad_report(), ok_report()])
-    real_now = sched.datetime
+    real_now = sched.utcnow_naive
     # 첫 wait에서 시간이 12시간 흐른 것처럼 만든다.
     shift = {"on": False}
     orig_wait = s._stop.wait
@@ -160,16 +160,14 @@ def test_incomplete_then_retry_after_wait_succeeds(seeded):
 
     s._stop.wait = wait
 
-    class Clock(real_now):
-        @classmethod
-        def now(cls, tz=None):
-            base = real_now.now(tz)
-            return base + SYNC_INTERVAL + timedelta(seconds=1) if shift["on"] else base
+    def clock():
+        base = real_now()
+        return base + SYNC_INTERVAL + timedelta(seconds=1) if shift["on"] else base
 
     def stop_after_record():
         s._stop.flag = True
 
-    with patch.object(sched, "TourSyncService", cls), patch.object(sched, "datetime", Clock), \
+    with patch.object(sched, "TourSyncService", cls), patch.object(sched, "utcnow_naive", clock), \
             patch.object(sched, "record_success", side_effect=stop_after_record) as rec:
         s._run_loop(seeded)
     assert svc.sync_festivals.call_count == 2

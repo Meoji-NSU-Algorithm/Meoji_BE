@@ -24,6 +24,7 @@ def issue_tokens(user_id: int) -> dict[str, str]:
         "refresh_token": create_refresh_token(identity=identity),
     }
 
+
 # SQLAlchemy 모델 생성자를 PyCharm이 인식하지 못해 나는 오탐을 끈다.
 # noinspection PyArgumentList
 def rotate_refresh_token(refresh_payload: dict) -> dict[str, str]:

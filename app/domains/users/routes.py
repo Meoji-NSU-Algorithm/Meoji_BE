@@ -7,7 +7,9 @@ from app.domains.auth import service as auth_service
 from app.domains.users.schemas import UserResponseSchema, ConsentRequestSchema, ConsentResponseSchema
 from app.domains.users import service as user_service
 
+# 부모 Blueprint(api_bp)가 /api를 붙인다.
 users_bp = Blueprint("users", __name__, url_prefix="/users")
+
 
 @users_bp.get("/me")
 @jwt_required()

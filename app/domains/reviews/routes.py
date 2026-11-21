@@ -19,7 +19,7 @@ from app.domains.reviews.schemas import (
 from app.domains.reviews import service as review_service
 
 # 부모 Blueprint(api_bp)가 /api를 붙인다.
-review_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
+reviews_bp = Blueprint("reviews", __name__, url_prefix="/reviews")
 
 
 def _body_and_files():
@@ -39,7 +39,7 @@ def _body_and_files():
     return body, [file for file in request.files.getlist("images") if file.filename]
 
 
-@review_bp.post("")
+@reviews_bp.post("")
 @jwt_required()
 def create_review():
     """리뷰를 작성한다.
@@ -71,7 +71,7 @@ def create_review():
     ), 201
 
 
-@review_bp.get("/event/<int:event_id>")
+@reviews_bp.get("/event/<int:event_id>")
 @jwt_required()
 def list_event_reviews(event_id):
     """행사의 리뷰 목록을 최근 수정순으로 반환한다.
@@ -87,7 +87,7 @@ def list_event_reviews(event_id):
     ), 200
 
 
-@review_bp.get("/event/<int:event_id>/rating")
+@reviews_bp.get("/event/<int:event_id>/rating")
 @jwt_required()
 def get_event_rating(event_id):
     """행사의 평균 평점과 리뷰 개수를 반환한다.
@@ -107,7 +107,7 @@ def get_event_rating(event_id):
     ), 200
 
 
-@review_bp.get("/my")
+@reviews_bp.get("/my")
 @jwt_required()
 def list_my_reviews():
     """로그인한 사용자가 쓴 리뷰를 각 항목에 event 포함해서 최근 수정순으로 반환한다.
@@ -125,7 +125,7 @@ def list_my_reviews():
     ), 200
 
 
-@review_bp.put("/<int:review_id>")
+@reviews_bp.put("/<int:review_id>")
 @jwt_required()
 def update_review(review_id):
     """본인이 쓴 리뷰의 평점, 내용, 사진을 수정한다.
@@ -154,7 +154,7 @@ def update_review(review_id):
     ), 200
 
 
-@review_bp.delete("/<int:review_id>")
+@reviews_bp.delete("/<int:review_id>")
 @jwt_required()
 def delete_review(review_id):
     """본인이 쓴 리뷰를 삭제하고 삭제된 리뷰를 반환한다.

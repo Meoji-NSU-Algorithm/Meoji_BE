@@ -25,7 +25,7 @@ def post_review(client, headers, event_id, rating=4.0, content="좋아요"):
 # ---------- events ----------
 
 def test_options_endpoints(client, refs, login):
-    """카테고리(JWT 불필요)/시도(JWT 필요) 선택지가 sort_order 순으로 내려온다."""
+    """카테고리·시도(둘 다 JWT 불필요) 선택지가 sort_order 순으로 내려온다."""
     h, _, _ = login()
     cats = client.get("/api/events/categories").get_json()
     assert cats["success"] is True
@@ -96,7 +96,7 @@ def test_monthly_top(client, refs, make_event):
 
 
 def test_event_detail_and_view_count(client, refs, make_event, login):
-    """상세 조회마다 view_count가 오르고 DB에 반영된다."""
+    """상세 조회마다 view_count가 오르고 DB에 반영된다. 같은 사용자의 같은 날 재조회는 세지 않는다."""
     h, _, _ = login()
     event = make_event(title="상세행사", description="설명")
     eid = event.id
@@ -106,6 +106,8 @@ def test_event_detail_and_view_count(client, refs, make_event, login):
     assert data["id"] == eid and data["title"] == "상세행사" and data["description"] == "설명"
     assert data["reviews"] == [] and data["review_count"] == 0 and data["average_rating"] == 0
     client.get(f"/api/events/{eid}", headers=h)
+    other, _, _ = login(kakao_id=4999)
+    client.get(f"/api/events/{eid}", headers=other)
     db.session.remove()  # REPEATABLE READ 스냅샷을 버리고 새로 읽는다
     assert db.session.get(Event, eid).view_count == 2
     today = datetime.now(KST).date()
@@ -290,12 +292,18 @@ def test_home_event_endpoints_do_not_require_jwt(client, refs, path):
     "/api/events?start_date=2026-01-01",
     "/api/events?end_date=2026-12-31",
     "/api/events?page=1&q=a",
-    "/api/events/sidos",
     "/api/events/1",
 ])
-def test_search_sidos_and_detail_require_jwt(client, refs, path):
-    """검색·필터가 붙은 목록, 시도 목록, 상세는 토큰이 없으면 401이다."""
+def test_search_and_detail_require_jwt(client, refs, path):
+    """검색·필터가 붙은 목록과 상세는 토큰이 없으면 401이다."""
     err(client.get(path), 401, "AUTH_UNAUTHORIZED")
+
+
+def test_sidos_is_public(client, refs):
+    """시도 목록은 로그인 없이 조회할 수 있다(5864586에서 JWT 요구를 뺐다)."""
+    resp = client.get("/api/events/sidos")
+    assert resp.status_code == 200
+    assert [s["code"] for s in resp.get_json()["data"]] == ["44", "11"]
 
 
 def test_empty_search_param_is_not_treated_as_search(client, refs):
