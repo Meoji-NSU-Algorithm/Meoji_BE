@@ -64,11 +64,7 @@ def create_review():
 
     result = review_service.create_review(data, files)
 
-    return jsonify(
-        CommonResponse.success(
-            ReviewResponseSchema().dump(result)
-        )
-    ), 201
+    return jsonify(CommonResponse.success(ReviewResponseSchema().dump(result))), 201
 
 
 @reviews_bp.get("/event/<int:event_id>")
@@ -80,11 +76,7 @@ def list_event_reviews(event_id):
     """
     result = review_service.get_reviews_by_event(event_id)
 
-    return jsonify(
-        CommonResponse.success(
-            ReviewResponseSchema(many=True).dump(result)
-        )
-    ), 200
+    return jsonify(CommonResponse.success(ReviewResponseSchema(many=True).dump(result))), 200
 
 
 @reviews_bp.get("/event/<int:event_id>/rating")
@@ -96,8 +88,7 @@ def get_event_rating(event_id):
     """
     rating_info = review_service.get_rating_info(event_id)
 
-    return jsonify(
-        CommonResponse.success(
+    return jsonify(CommonResponse.success(
             EventRatingResponseSchema().dump({
                 "event_id": event_id,
                 "average_rating": rating_info["average_rating"],
@@ -118,11 +109,7 @@ def list_my_reviews():
 
     result = review_service.get_my_reviews(user_id)
 
-    return jsonify(
-        CommonResponse.success(
-            MyReviewResponseSchema(many=True).dump(result)
-        )
-    ), 200
+    return jsonify(CommonResponse.success(MyReviewResponseSchema(many=True).dump(result))), 200
 
 
 @reviews_bp.put("/<int:review_id>")
@@ -147,11 +134,7 @@ def update_review(review_id):
 
     result = review_service.update_review(review_id, user_id, data, files)
 
-    return jsonify(
-        CommonResponse.success(
-            ReviewResponseSchema().dump(result)
-        )
-    ), 200
+    return jsonify(CommonResponse.success(ReviewResponseSchema().dump(result))), 200
 
 
 @reviews_bp.delete("/<int:review_id>")
@@ -169,8 +152,4 @@ def delete_review(review_id):
 
     result = review_service.delete_review(review_id, user_id)
 
-    return jsonify(
-        CommonResponse.success(
-            ReviewResponseSchema().dump(result)
-        )
-    ), 200
+    return jsonify(CommonResponse.success(ReviewResponseSchema().dump(result))), 200
