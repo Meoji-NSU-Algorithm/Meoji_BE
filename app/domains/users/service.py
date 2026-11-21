@@ -1,10 +1,9 @@
 """유저 조회/생성/삭제와 약관 동의를 담당하는 서비스. JWT와 카카오 통신은 모르고 user 테이블만 다룬다."""
-from datetime import datetime, timezone
-
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
+from app.core.time import utcnow
 from app.domains.users.models import User
 
 
@@ -82,7 +81,7 @@ def save_consent(user_id: int, data: dict) -> User:
         BusinessException: 유저가 없으면 USER_NOT_FOUND.
     """
     user = get_user(user_id)
-    now = datetime.now(timezone.utc)
+    now = utcnow()
 
     if user.terms_agreed_at is None:
         user.terms_agreed_at = now
