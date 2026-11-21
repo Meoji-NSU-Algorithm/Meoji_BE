@@ -109,6 +109,7 @@ pytest
 - `MYSQL_DATABASE`, `MYSQL_USER`(root 불가), `MYSQL_PASSWORD`(영문자·숫자만)
 - `KAKAO_REDIRECT_URI`: 운영 주소로 바꾸고 카카오 개발자 콘솔의 등록 값도 같게 맞춥니다.
 - `FLASK_DEBUG`: 운영에서는 `1`로 두지 않습니다.
+- `TOURAPI_KEY`, `KOPIS_API_KEY`: 행사 자동 수집용 키입니다. `KOPIS_API_KEY`를 비워 두면 공연 수집이 시작되지 않고, `TOURAPI_KEY`가 없으면 축제 수집이 실패합니다.
 - 리뷰 이미지 저장소(Cloudflare R2): `S3_ENDPOINT=https://<계정ID>.r2.cloudflarestorage.com`, `S3_REGION=auto`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`. `S3_PUBLIC_URL`은 비워 둡니다.
 
 ### 실행 순서
