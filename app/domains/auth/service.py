@@ -5,9 +5,9 @@ kakao_client(카카오 통신), users.service(유저 조회/생성/삭제), toke
 탈퇴(withdraw)가 같은 세 부품을 반대 순서로 쓴다.
 """
 from app.core.errors import BusinessException, ErrorCode
+from app.core.storage import delete_objects
 from app.domains.auth import kakao_client, token_service
 from app.domains.reviews import service as review_service
-from app.domains.reviews.storage_client import delete_objects
 from app.domains.users import service as user_service
 
 

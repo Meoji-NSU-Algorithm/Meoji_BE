@@ -50,9 +50,9 @@ def create_review():
     Raises:
         COMMON_INVALID_INPUT: 본문 검증 실패, 사진 5장 초과(400).
         USER_NOT_FOUND / EVENT_NOT_FOUND: 작성자 또는 행사가 없음(404).
-        REVIEW_IMAGE_INVALID / REVIEW_IMAGE_TOO_LARGE: 이미지가 아니거나 한 장 10MB 초과(400/413).
+        IMAGE_INVALID / IMAGE_TOO_LARGE: 이미지가 아니거나 한 장 10MB 초과(400/413).
         COMMON_PAYLOAD_TOO_LARGE: 요청 본문이 MAX_CONTENT_LENGTH 초과(413).
-        REVIEW_IMAGE_STORAGE_UNAVAILABLE: 저장소 설정 누락 또는 통신 실패(503).
+        IMAGE_STORAGE_UNAVAILABLE: 저장소 설정 누락 또는 통신 실패(503).
     """
     user_id = int(get_jwt_identity())
 

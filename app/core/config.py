@@ -50,7 +50,7 @@ class Config:
     # 실행 중 실패한 요청을 자동 재시도하지는 않는다.
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
 
-    # --- 리뷰 이미지 저장소 (app/domains/reviews/storage_client.py에서 사용) ---
+    # --- 이미지 저장소 (app/core/storage.py에서 사용, 리뷰·프로필 사진 공통) ---
 
     # S3 호환 저장소 주소. 자체 서버(Garage 등)는 http://<IP>:3900, AWS S3는 비워 둔다.
     # 저장소를 옮길 때는 이 값들만 바꾸고 코드와 DB는 그대로 둔다.

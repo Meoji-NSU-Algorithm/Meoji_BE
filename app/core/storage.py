@@ -1,6 +1,6 @@
-"""S3 호환 저장소(Garage, AWS S3 등) 클라이언트.
+"""S3 호환 저장소(Garage, AWS S3 등) 클라이언트. 리뷰 사진과 프로필 사진이 같이 쓴다.
 
-auth/kakao_client.py처럼 외부 통신만 맡는다. 이미지 변환은 images.py가 맡는다.
+auth/kakao_client.py처럼 외부 통신만 맡는다. 이미지 변환은 core/images.py가 맡는다.
 저장소를 옮기면 .env의 S3_* 값만 바꾸면 되며 코드와 DB는 그대로 둔다.
 """
 
@@ -29,12 +29,12 @@ def _client():
     """앱마다 한 번 만든 boto3 클라이언트를 돌려준다(스레드 간 공유 가능).
 
     Raises:
-        BusinessException: 버킷이나 키가 설정되지 않았으면 REVIEW_IMAGE_STORAGE_UNAVAILABLE.
+        BusinessException: 버킷이나 키가 설정되지 않았으면 IMAGE_STORAGE_UNAVAILABLE.
     """
     if not _configured():
-        raise BusinessException(ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE)
+        raise BusinessException(ErrorCode.IMAGE_STORAGE_UNAVAILABLE)
 
-    client = current_app.extensions.get("review_storage_client")
+    client = current_app.extensions.get("storage_client")
     if client is None:
         config = current_app.config
         client = boto3.client(
@@ -47,23 +47,23 @@ def _client():
             # botocore 기본 타임아웃은 60초라 저장소가 멈추면 요청이 오래 묶인다. 카카오·TourAPI처럼 짧게 둔다.
             config=BotoConfig(connect_timeout=5, read_timeout=10, retries={"total_max_attempts": 2}),
         )
-        current_app.extensions["review_storage_client"] = client
+        current_app.extensions["storage_client"] = client
     return client
 
 
 def put_object(key: str, data: bytes, content_type: str) -> None:
-    """Raises: BusinessException: 설정 누락이나 통신 실패면 REVIEW_IMAGE_STORAGE_UNAVAILABLE."""
+    """Raises: BusinessException: 설정 누락이나 통신 실패면 IMAGE_STORAGE_UNAVAILABLE."""
     client = _client()
     try:
         client.put_object(Bucket=current_app.config["S3_BUCKET"], Key=key, Body=data, ContentType=content_type)
     except (BotoCoreError, ClientError):
         # 오류 메시지에 엔드포인트·버킷 정보가 담길 수 있어 응답에는 넣지 않고 로그에만 남긴다.
-        current_app.logger.error("리뷰 이미지 저장 실패: key=%s", key, exc_info=True)
-        raise BusinessException(ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE) from None
+        current_app.logger.error("이미지 저장 실패: key=%s", key, exc_info=True)
+        raise BusinessException(ErrorCode.IMAGE_STORAGE_UNAVAILABLE) from None
 
 
 def delete_objects(keys) -> None:
-    """객체를 지운다. 리뷰 변경이 커밋된 뒤에 호출하므로 실패해도 예외 없이 로그만 남긴다."""
+    """객체를 지운다. DB 변경이 커밋된 뒤에 호출하므로 실패해도 예외 없이 로그만 남긴다."""
     keys = list(keys)
     if not keys:
         return
@@ -74,7 +74,7 @@ def delete_objects(keys) -> None:
         )
     except Exception:
         # 커밋 뒤 정리라 어떤 오류든 요청(탈퇴 등)을 실패시키지 않는다. 남은 파일은 참조되지 않을 뿐이다.
-        current_app.logger.warning("리뷰 이미지 삭제 실패(%d개)", len(keys), exc_info=True)
+        current_app.logger.warning("이미지 삭제 실패(%d개)", len(keys), exc_info=True)
 
 
 def object_url(key: str) -> str | None:
@@ -94,5 +94,5 @@ def object_url(key: str) -> str | None:
             ExpiresIn=PRESIGNED_EXPIRES,
         )
     except (BotoCoreError, ClientError):
-        current_app.logger.warning("리뷰 이미지 URL 생성 실패: key=%s", key, exc_info=True)
+        current_app.logger.warning("이미지 URL 생성 실패: key=%s", key, exc_info=True)
         return None

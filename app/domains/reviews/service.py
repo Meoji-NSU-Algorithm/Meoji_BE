@@ -18,10 +18,10 @@ from sqlalchemy.orm import selectinload
 
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
+from app.core.storage import delete_objects, put_object
 from app.domains.events.models import Event
 from app.domains.reviews.images import MAX_REVIEW_IMAGES, prepare_review_image
 from app.domains.reviews.models import Review
-from app.domains.reviews.storage_client import delete_objects, put_object
 from app.domains.users.models import User
 
 # MySQL의 중복 키(unique 위반) 오류 번호
@@ -99,7 +99,7 @@ def _store_images(files) -> list[str]:
     올리다 실패하면 이미 올린 것을 지우고 예외를 그대로 올린다.
 
     Raises:
-        BusinessException: prepare_review_image, storage_client.put_object 참고.
+        BusinessException: prepare_review_image, core.storage.put_object 참고.
     """
     prepared = [prepare_review_image(file) for file in files]
     keys = []

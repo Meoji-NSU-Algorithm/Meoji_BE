@@ -4,6 +4,7 @@ from datetime import timedelta
 
 import pytest
 
+from app.core import storage
 from app.core.extensions import db
 from app.core.time import KST
 from app.domains.auth import kakao_client
@@ -106,3 +107,30 @@ def make_event(app_ctx, seq, refs):
         return event
 
     return _make
+
+
+PUBLIC = "http://img.test/images"
+
+
+class FakeS3:
+    """core/storage._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
+
+    def __init__(self):
+        self.objects = {}
+
+    def put_object(self, Bucket, Key, Body, ContentType):
+        self.objects[Key] = (Body, ContentType)
+
+    def delete_objects(self, Bucket, Delete):
+        for obj in Delete["Objects"]:
+            self.objects.pop(obj["Key"], None)
+
+
+@pytest.fixture()
+def s3(app, monkeypatch):
+    # kakao_profiles 픽스처처럼 외부 통신 지점(모듈 속성)만 바꾼다.
+    fake = FakeS3()
+    monkeypatch.setattr(storage, "_client", lambda: fake)
+    monkeypatch.setitem(app.config, "S3_BUCKET", "images")
+    monkeypatch.setitem(app.config, "S3_PUBLIC_URL", PUBLIC)
+    return fake
