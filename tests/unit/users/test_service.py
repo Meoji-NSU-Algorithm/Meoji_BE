@@ -37,7 +37,7 @@ def test_returns_existing_user(app_ctx):
     assert _count() == 1
 
 
-def test_updates_nickname_and_profile_but_not_email(app_ctx):
+def test_updates_nickname_and_kakao_profile_but_not_email(app_ctx):
     """닉네임/프로필은 갱신되고 이메일은 가입 시점 값이 유지된다."""
     service.get_or_create_kakao_user(_info())
     user, created = service.get_or_create_kakao_user(_info(nickname="new", profile_image=None, email="changed@b.com"))
@@ -45,7 +45,7 @@ def test_updates_nickname_and_profile_but_not_email(app_ctx):
     db.session.expire_all()
     stored = db.session.scalar(db.select(User).filter_by(kakao_id=1001))
     assert stored.nickname == "new"
-    assert stored.profile_image is None
+    assert stored.kakao_profile_image is None
     assert stored.email == "a@b.com"
 
 
@@ -113,3 +113,23 @@ def test_missing_info_key_raises_keyerror(app_ctx):
     """필수 키가 빠진 info는 KeyError가 난다(kakao_client가 보장하는 계약)."""
     with pytest.raises(KeyError):
         service.get_or_create_kakao_user({"kakao_id": 1})
+
+
+@pytest.mark.parametrize("source", ["custom", "default"])
+def test_login_keeps_chosen_profile_image(app_ctx, source):
+    """직접 고른 사진은 다시 로그인해도 카카오 사진으로 덮어쓰지 않는다. 카카오 칸만 갱신한다."""
+    user, _ = service.get_or_create_kakao_user(_info(profile_image="http://kakao/old"))
+    user.profile_image_source = source
+    db.session.commit()
+
+    user, _ = service.get_or_create_kakao_user(_info(profile_image="http://kakao/new"))
+
+    assert user.profile_image_source == source
+    assert user.kakao_profile_image == "http://kakao/new"
+
+
+def test_login_updates_kakao_profile_image(app_ctx):
+    """kakao를 고른 사람은 카카오에서 바꾼 사진이 반영된다(기존 동작)."""
+    service.get_or_create_kakao_user(_info(profile_image="http://kakao/old"))
+    user, _ = service.get_or_create_kakao_user(_info(profile_image="http://kakao/new"))
+    assert user.profile_image == "http://kakao/new"

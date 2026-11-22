@@ -1,8 +1,8 @@
-"""storage_client: 저장소 설정 판단과 삭제 실패 처리."""
+"""core/storage: 저장소 설정 판단과 삭제 실패 처리."""
 import pytest
 
 from app.core.errors import BusinessException, ErrorCode
-from app.domains.reviews import storage_client
+from app.core import storage as storage_client
 
 
 @pytest.fixture()
@@ -11,7 +11,7 @@ def s3_config(app_ctx, monkeypatch):
     values = {"S3_ENDPOINT": "http://s3.test", "S3_BUCKET": "b", "S3_ACCESS_KEY": "k", "S3_SECRET_KEY": "s", "S3_PUBLIC_URL": None}
     for name, value in values.items():
         monkeypatch.setitem(config, name, value)
-    monkeypatch.delitem(app_ctx.extensions, "review_storage_client", raising=False)
+    monkeypatch.delitem(app_ctx.extensions, "storage_client", raising=False)
     return config
 
 
@@ -22,7 +22,7 @@ def test_placeholder_values_mean_not_configured(s3_config, monkeypatch, name):
     assert storage_client.object_url("reviews/a.webp") is None
     with pytest.raises(BusinessException) as e:
         storage_client.put_object("reviews/a.webp", b"x", "image/webp")
-    assert e.value.error_code == ErrorCode.REVIEW_IMAGE_STORAGE_UNAVAILABLE
+    assert e.value.error_code == ErrorCode.IMAGE_STORAGE_UNAVAILABLE
 
 
 def test_delete_failure_is_only_logged(s3_config, monkeypatch):

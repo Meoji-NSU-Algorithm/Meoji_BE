@@ -5,9 +5,9 @@ kakao_client(카카오 통신), users.service(유저 조회/생성/삭제), toke
 탈퇴(withdraw)가 같은 세 부품을 반대 순서로 쓴다.
 """
 from app.core.errors import BusinessException, ErrorCode
+from app.core.storage import delete_objects
 from app.domains.auth import kakao_client, token_service
 from app.domains.reviews import service as review_service
-from app.domains.reviews.storage_client import delete_objects
 from app.domains.users import service as user_service
 
 
@@ -77,6 +77,8 @@ def withdraw(user_id: int, access_jti: str) -> None:
         BusinessException: 유저가 없으면 USER_NOT_FOUND.
     """
     image_keys = review_service.image_keys_to_delete_on_withdraw(user_id)
+    # 유저가 지워지면 읽을 수 없으므로 직접 올린 프로필 사진 key도 미리 읽어 둔다.
+    image_keys |= user_service.profile_image_keys_to_delete_on_withdraw(user_id)
     kakao_id = user_service.delete_user(user_id)
     token_service.revoke_jti(access_jti)
 

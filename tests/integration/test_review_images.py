@@ -6,35 +6,9 @@ import pytest
 from PIL import Image
 
 from app.core.extensions import db
-from app.domains.reviews import images, storage_client
+from app.domains.reviews import images
 from app.domains.reviews.models import Review
-
-PUBLIC = "http://img.test/review-images"
-
-
-class FakeS3:
-    """storage_client._client()가 돌려주는 boto3 클라이언트 대신 쓰는 메모리 저장소."""
-
-    def __init__(self):
-        self.objects = {}
-
-    def put_object(self, Bucket, Key, Body, ContentType):
-        self.objects[Key] = (Body, ContentType)
-
-    def delete_objects(self, Bucket, Delete):
-        for obj in Delete["Objects"]:
-            self.objects.pop(obj["Key"], None)
-
-
-@pytest.fixture()
-def s3(app, monkeypatch):
-    # kakao_profiles 픽스처처럼 외부 통신 지점(모듈 속성)만 바꾼다.
-    fake = FakeS3()
-    monkeypatch.setattr(storage_client, "_client", lambda: fake)
-    monkeypatch.setitem(app.config, "S3_BUCKET", "review-images")
-    monkeypatch.setitem(app.config, "S3_PUBLIC_URL", PUBLIC)
-    return fake
-
+from tests.integration.conftest import PUBLIC
 
 def _jpeg(size=(2000, 1000)):
     out = io.BytesIO()
@@ -95,14 +69,14 @@ def test_create_rejects_bad_images_without_storing(client, login, make_event, s3
     eid = make_event().id
 
     response = _post(client, headers, eid, _files(1) + [(io.BytesIO(b"<?php echo 1; ?>"), "x.jpg")])
-    assert (response.status_code, response.json["code"]) == (400, "REVIEW_IMAGE_INVALID")
+    assert (response.status_code, response.json["code"]) == (400, "IMAGE_INVALID")
 
     response = _post(client, headers, eid, _files(6))
     assert (response.status_code, response.json["code"]) == (400, "COMMON_INVALID_INPUT")
 
-    monkeypatch.setattr(images, "MAX_UPLOAD_BYTES", 100)
+    monkeypatch.setattr(images, "REVIEW_MAX_UPLOAD_BYTES", 100)
     response = _post(client, headers, eid)
-    assert (response.status_code, response.json["code"]) == (413, "REVIEW_IMAGE_TOO_LARGE")
+    assert (response.status_code, response.json["code"]) == (413, "IMAGE_TOO_LARGE")
 
     assert s3.objects == {}
     assert db.session.query(Review).count() == 0
@@ -142,7 +116,7 @@ def test_storage_failure_midway_deletes_already_stored(client, login, make_event
 
     monkeypatch.setattr(s3, "put_object", flaky)
     response = _post(client, headers, make_event().id, _files(3))
-    assert (response.status_code, response.json["code"]) == (503, "REVIEW_IMAGE_STORAGE_UNAVAILABLE")
+    assert (response.status_code, response.json["code"]) == (503, "IMAGE_STORAGE_UNAVAILABLE")
     assert s3.objects == {}
 
 
@@ -151,7 +125,7 @@ def test_without_storage_config_is_503(client, login, make_event, app, monkeypat
         monkeypatch.setitem(app.config, key, None)
     headers, _, _ = login()
     response = _post(client, headers, make_event().id)
-    assert (response.status_code, response.json["code"]) == (503, "REVIEW_IMAGE_STORAGE_UNAVAILABLE")
+    assert (response.status_code, response.json["code"]) == (503, "IMAGE_STORAGE_UNAVAILABLE")
 
 
 def test_update_keeps_removes_and_adds_images(client, login, make_event, s3):

@@ -30,3 +30,11 @@ class ConsentResponseSchema(Schema):
     privacy_agreed_at = UtcDateTime(allow_none=True)
     marketing_agreed = fields.Boolean()
     marketing_agreed_at = UtcDateTime(allow_none=True)
+
+
+class ProfileImageSourceRequestSchema(Schema):
+    """PUT /api/users/me/profile-image/source 요청. 직접 올린 사진(custom)은 업로드 API로만 바꿀 수 있다."""
+    source = fields.String(
+        required=True,
+        validate=validate.OneOf(["kakao", "default"], error="kakao 또는 default만 가능합니다."),
+    )

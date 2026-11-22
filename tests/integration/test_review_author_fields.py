@@ -8,7 +8,7 @@ def test_review_author_fields(client, login, make_event):
     author_headers, _, uid = login(kakao_id=7001, nickname="작성자")
     viewer_headers, _, _ = login(kakao_id=7002)
     user = db.session.get(User, uid)
-    user.profile_image = "https://example.com/profile.jpg"
+    user.kakao_profile_image = "https://example.com/profile.jpg"
     db.session.commit()
     expected_author = {"id": uid, "nickname": "작성자", "profile_image": user.profile_image}
     created = client.post("/api/reviews", headers=author_headers, json={"event_id": eid, "rating": 4.5, "content": "후기"})

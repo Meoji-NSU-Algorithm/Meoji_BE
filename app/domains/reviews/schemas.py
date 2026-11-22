@@ -10,8 +10,8 @@ from marshmallow import (
 )
 
 from app.core.fields import UtcDateTime
+from app.core.storage import object_url
 from app.domains.reviews.images import KEY_PATTERN, MAX_REVIEW_IMAGES
-from app.domains.reviews.storage_client import object_url
 
 CONTENT_MAX_LENGTH = 1000
 CONTENT_LENGTH_MESSAGE = "리뷰 내용은 공백을 제외하고 1~1000자여야 합니다."

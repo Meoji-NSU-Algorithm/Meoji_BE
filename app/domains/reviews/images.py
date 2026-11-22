@@ -1,87 +1,35 @@
-"""리뷰 이미지 변환과 저장소 key 발급을 담당한다. 저장소 통신은 storage_client.py가 맡는다.
+"""리뷰 이미지 제한과 저장소 key 발급을 담당한다. 변환은 core/images.py, 저장소 통신은 core/storage.py가 맡는다.
 
-업로드한 원본은 저장하지 않고, 긴 변을 줄여 webp로 다시 인코딩한 결과만 저장한다.
-다시 인코딩하면 EXIF(촬영 위치 등)가 빠지고 이미지가 아닌 파일은 여기서 걸러진다.
 DB에는 저장소 키(`reviews/<uuid>.webp`)만 저장하고 URL은 응답 시점에 만든다.
 """
 
-import io
 import re
 import uuid
 
-from PIL import Image, ImageOps, UnidentifiedImageError
-
-from app.core.errors import BusinessException, ErrorCode
+from app.core.images import convert_to_webp, read_upload
 
 # 리뷰 한 건에 붙일 수 있는 최대 장수
 MAX_REVIEW_IMAGES = 5
 
 # 변환 전 원본 한 장의 최대 크기. 변환하려면 메모리에 올려야 하므로 원본 기준으로 막는다.
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+REVIEW_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 # 저장할 이미지의 긴 변(px). 폰 사진(4000px 안팎)을 이 크기로 줄이는 것이 용량 절감의 대부분이다.
-MAX_SIDE = 1600
-
-WEBP_QUALITY = 80
-
-# 압축은 작지만 풀면 거대한 이미지(픽셀 폭탄)를 막는다.
-# Pillow의 MAX_IMAGE_PIXELS는 한도의 2배까지 경고만 내므로 헤더 크기로 직접 검사한다.
-MAX_PIXELS = 40_000_000
-
-# 업로드를 받는 형식. 움직이는 GIF는 지원하지 않는다.
-_ACCEPTED_FORMATS = ("JPEG", "PNG", "WEBP")
+REVIEW_MAX_SIDE = 1600
 
 # 이 서버가 만든 키만 리뷰에 연결할 수 있게 형식을 고정한다. 외부 URL이나 다른 경로를 막는다.
 KEY_PATTERN = re.compile(r"^reviews/[0-9a-f]{32}\.webp$")
-
-
-def convert_to_webp(raw: bytes) -> bytes:
-    """이미지 바이트를 회전 보정·리사이즈한 webp 바이트로 바꾼다.
-
-    Raises:
-        BusinessException: 이미지가 아니거나 지원하지 않는 형식이면 REVIEW_IMAGE_INVALID.
-    """
-    try:
-        # verify()는 파일 구조만 검사하고 이미지를 못 쓰게 만들므로 다시 연다.
-        Image.open(io.BytesIO(raw), formats=_ACCEPTED_FORMATS).verify()
-        image = Image.open(io.BytesIO(raw), formats=_ACCEPTED_FORMATS)
-        if image.width * image.height > MAX_PIXELS:
-            raise BusinessException(ErrorCode.REVIEW_IMAGE_INVALID, "이미지 해상도가 너무 큽니다.")
-        # 폰 카메라 JPEG는 보조 프레임이 붙은 MPO로 열린다. 움직이는 이미지가 아니므로 첫 프레임만 쓴다.
-        if image.format != "MPO" and getattr(image, "is_animated", False):
-            raise BusinessException(ErrorCode.REVIEW_IMAGE_INVALID, "움직이는 이미지는 올릴 수 없습니다.")
-
-        # JPEG는 디코딩할 때 1/2~1/8로 줄여 읽어 원본 크기만큼 메모리를 쓰지 않는다. 다른 형식은 무시된다.
-        image.draft("RGB", (MAX_SIDE, MAX_SIDE))
-
-        # EXIF 회전 정보를 픽셀에 반영한다. 다시 인코딩하면 EXIF가 빠져 폰 사진이 눕기 때문이다.
-        image = ImageOps.exif_transpose(image)
-        # webp는 RGB/RGBA만 저장하므로 CMYK·팔레트(P) 등은 변환한다. 투명도(RGBA)는 유지한다.
-        if image.mode not in ("RGB", "RGBA"):
-            image = image.convert("RGBA" if "transparency" in image.info else "RGB")
-        image.thumbnail((MAX_SIDE, MAX_SIDE))
-
-        out = io.BytesIO()
-        image.save(out, "WEBP", quality=WEBP_QUALITY)
-        return out.getvalue()
-    except BusinessException:
-        raise
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as error:
-        raise BusinessException(ErrorCode.REVIEW_IMAGE_INVALID) from error
 
 
 def prepare_review_image(file_storage) -> tuple[str, bytes]:
     """업로드 파일을 webp로 바꿔 새 저장소 key와 함께 돌려준다. 저장은 호출자가 한다.
 
     Raises:
-        BusinessException: 원본이 MAX_UPLOAD_BYTES를 넘으면 REVIEW_IMAGE_TOO_LARGE,
-            이미지가 아니면 REVIEW_IMAGE_INVALID.
+        BusinessException: 원본이 REVIEW_MAX_UPLOAD_BYTES를 넘으면 IMAGE_TOO_LARGE,
+            이미지가 아니면 IMAGE_INVALID.
     """
-    # 한도보다 1바이트 더 읽어, 넘는 파일을 끝까지 메모리에 올리지 않고 판단한다.
-    raw = file_storage.stream.read(MAX_UPLOAD_BYTES + 1)
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise BusinessException(ErrorCode.REVIEW_IMAGE_TOO_LARGE)
+    raw = read_upload(file_storage, max_bytes=REVIEW_MAX_UPLOAD_BYTES)
 
     # key(저장소 파일 이름)는 서버가 랜덤으로 만든다. 사용자가 보낸 파일 이름은 쓰지 않는다.
     # 사용자가 이름을 정할 수 있으면 남의 파일과 같은 이름으로 덮어쓰거나, 남의 key를 흉내 낼 수 있기 때문이다.
-    return f"reviews/{uuid.uuid4().hex}.webp", convert_to_webp(raw)
+    return f"reviews/{uuid.uuid4().hex}.webp", convert_to_webp(raw, max_side=REVIEW_MAX_SIDE)
