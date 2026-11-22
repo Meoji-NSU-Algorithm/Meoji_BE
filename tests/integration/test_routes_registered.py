@@ -9,6 +9,8 @@ EXPECTED_ROUTES = {
     ("DELETE", "/api/users/me"): "api.users.withdraw_user",
     ("GET", "/api/users/me/consents"): "api.users.get_consents",
     ("POST", "/api/users/me/consents"): "api.users.save_consents",
+    ("PUT", "/api/users/me/profile-image"): "api.users.upload_profile_image",
+    ("PUT", "/api/users/me/profile-image/source"): "api.users.change_profile_image_source",
     ("POST", "/api/reviews"): "api.reviews.create_review",
     ("GET", "/api/reviews/event/<int:event_id>"): "api.reviews.list_event_reviews",
     ("GET", "/api/reviews/event/<int:event_id>/rating"): "api.reviews.get_event_rating",

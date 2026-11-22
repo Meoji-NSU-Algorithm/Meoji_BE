@@ -4,11 +4,14 @@ from unittest.mock import MagicMock
 import requests
 
 from app.core.extensions import db
+from app.domains.bookmarks.models import Bookmark
+from app.domains.events.models import EventUserDailyView
 from app.domains.auth import kakao_client
 from app.domains.reviews.models import Review
 from app.domains.users.models import User
 from tests.integration.test_auth_flow import assert_error
 from tests.integration.test_events_reviews_flow import post_review
+from tests.integration.test_review_images import _files, _jpeg, _post
 
 
 def _user_exists(user_id):
@@ -112,3 +115,32 @@ def test_withdraw_succeeds_without_admin_key(client, app_ctx, login, monkeypatch
     assert client.delete("/api/users/me", headers=h).status_code == 200
     post.assert_not_called()
     assert not _user_exists(uid)
+
+
+def test_withdraw_deletes_all_my_data(client, login, make_event, s3, monkeypatch):
+    """탈퇴하면 리뷰·리뷰 사진·북마크·조회 기록·프로필 사진이 모두 지워지고, 다른 유저 것은 남는다."""
+    monkeypatch.setattr(kakao_client, "unlink_kakao_user", MagicMock())
+    h1, _, uid1 = login(kakao_id=1)
+    h2, _, uid2 = login(kakao_id=2)
+    event = make_event()
+
+    for headers in (h1, h2):
+        assert _post(client, headers, event.id, _files(1)).status_code == 201           # 리뷰 + 리뷰 사진
+        client.post("/api/bookmarks", json={"eventId": event.id}, headers=headers)      # 북마크
+        client.get(f"/api/events/{event.id}", headers=headers)                          # 조회 기록
+    client.put("/api/users/me/profile-image", headers=h1,                               # 프로필 사진
+               content_type="multipart/form-data", data={"image": [(_jpeg(), "me.jpg")]})
+    for model in (Review, Bookmark, EventUserDailyView):
+        db.session.expire_all()
+        assert {row.user_id for row in db.session.scalars(db.select(model))} == {uid1, uid2}
+    files_before = set(s3.objects)
+    assert len(files_before) == 3                       # 리뷰 사진 2장 + 프로필 사진 1장
+
+    assert client.delete("/api/users/me", headers=h1).status_code == 200
+
+    db.session.expire_all()
+    for model in (Review, Bookmark, EventUserDailyView):
+        assert {row.user_id for row in db.session.scalars(db.select(model))} == {uid2}
+    assert not any(key.startswith("profiles/") for key in s3.objects)
+    assert set(s3.objects) < files_before                # 내 파일만 지워지고 다른 유저 파일은 남음
+    assert len(s3.objects) == 1

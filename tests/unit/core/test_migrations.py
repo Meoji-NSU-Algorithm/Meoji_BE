@@ -29,7 +29,8 @@ def test_every_revision_is_reachable_from_head():
 def test_merge_migration_joins_image_and_consent_branches():
     """북마크 통합 후에도 리뷰 이미지/약관 동의의 기존 병합 이력을 유지한다."""
     script = _script_directory()
-    assert script.get_current_head() == "371612cb106c"
+    assert script.get_current_head() == "e7a4c9b2d815"
+    assert script.get_revision("e7a4c9b2d815").down_revision == "371612cb106c"
     assert script.get_revision("371612cb106c").down_revision == "b8f24d671a90"
     assert set(script.get_revision("e5460f15d1f5").down_revision) == {"d5b81f3a6c27", "c5e8a2f7b140"}
     assert script.get_revision("c5e8a2f7b140").down_revision == "a7c3e1d94b52"
