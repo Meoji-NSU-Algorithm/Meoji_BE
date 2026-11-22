@@ -77,6 +77,8 @@ def withdraw(user_id: int, access_jti: str) -> None:
         BusinessException: 유저가 없으면 USER_NOT_FOUND.
     """
     image_keys = review_service.image_keys_to_delete_on_withdraw(user_id)
+    # 유저가 지워지면 읽을 수 없으므로 직접 올린 프로필 사진 key도 미리 읽어 둔다.
+    image_keys |= user_service.profile_image_keys_to_delete_on_withdraw(user_id)
     kakao_id = user_service.delete_user(user_id)
     token_service.revoke_jti(access_jti)
 

@@ -4,7 +4,12 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from app.core.response import CommonResponse
 from app.domains.auth import service as auth_service
-from app.domains.users.schemas import UserResponseSchema, ConsentRequestSchema, ConsentResponseSchema
+from app.domains.users.schemas import (
+    UserResponseSchema,
+    ConsentRequestSchema,
+    ConsentResponseSchema,
+    ProfileImageSourceRequestSchema,
+)
 from app.domains.users import service as user_service
 
 # 부모 Blueprint(api_bp)가 /api를 붙인다.
@@ -103,3 +108,49 @@ def save_consents():
     user = user_service.save_consent(int(get_jwt_identity()), data)
 
     return jsonify(CommonResponse.success(ConsentResponseSchema().dump(user))), 200
+
+
+@users_bp.put("/me/profile-image")
+@jwt_required()
+def upload_profile_image():
+    """프로필 사진을 직접 올린 사진으로 바꾼다.
+
+    PUT /api/users/me/profile-image
+    Header: Authorization: Bearer <access_token>
+    Body: multipart/form-data, image 필드에 사진 한 장 (jpg/png/webp, 10MB 이하)
+
+    Returns:
+        200: {"id", "email", "nickname", "profile_image"}
+
+    Raises:
+        400 COMMON_INVALID_INPUT / IMAGE_INVALID: 사진이 없거나 2장 이상, 이미지가 아님.
+        413 IMAGE_TOO_LARGE: 한 장 10MB 초과.
+        503 IMAGE_STORAGE_UNAVAILABLE: 저장소 설정 누락 또는 통신 실패.
+        401 AUTH_*: 토큰 문제. 404 USER_NOT_FOUND: 토큰은 유효하지만 유저가 DB에 없음.
+    """
+    files = [file for file in request.files.getlist("image") if file.filename]
+    user = user_service.set_custom_profile_image(int(get_jwt_identity()), files)
+
+    return jsonify(CommonResponse.success(UserResponseSchema().dump(user))), 200
+
+
+@users_bp.put("/me/profile-image/source")
+@jwt_required()
+def change_profile_image_source():
+    """프로필 사진을 카카오 사진 또는 기본 이미지로 바꾼다. 직접 올린 사진 파일은 지운다.
+
+    PUT /api/users/me/profile-image/source
+    Header: Authorization: Bearer <access_token>
+    Body: {"source": "kakao" | "default"}
+
+    Returns:
+        200: {"id", "email", "nickname", "profile_image"}
+
+    Raises:
+        400 COMMON_INVALID_INPUT: source가 kakao/default가 아님.
+        401 AUTH_*: 토큰 문제. 404 USER_NOT_FOUND: 토큰은 유효하지만 유저가 DB에 없음.
+    """
+    data = ProfileImageSourceRequestSchema().load(request.get_json(silent=True) or {})
+    user = user_service.set_profile_image_source(int(get_jwt_identity()), data["source"])
+
+    return jsonify(CommonResponse.success(UserResponseSchema().dump(user))), 200
