@@ -22,7 +22,7 @@ from app.domains.bookmarks.models import Bookmark
 from app.domains.events.models import Category, Event, Sido
 from app.domains.kopis.client import KopisAPI
 from app.domains.reviews.models import Review
-from app.domains.tour.sync_service import _fee, _homepage_url
+from app.domains.tour.sync_service import _fee, _homepage_url, assign_tags
 
 ID_PREFIX = "KOPIS-"
 # KOPIS 장르(genrenm) -> 우리 카테고리 이름. 여기 없는 장르는 수집하지 않는다.
@@ -235,6 +235,7 @@ class KopisSyncService:
                     row.organizer = _text(detail.get("entrpsnmH") or detail.get("entrpsnmP"), "organizer")
                     row.homepage_url = _text(_homepage_url(detail.get("relateurl")), "homepage_url")
                     row.tour_modified_at = _modified(detail.get("updatedate"))
+                    assign_tags(session, row)
                 if facility:
                     row.address = _text(facility.get("adres"), "address")
                     row.contact_phone = _text(facility.get("telno"), "contact_phone")

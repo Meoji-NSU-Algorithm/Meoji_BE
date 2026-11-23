@@ -102,6 +102,17 @@ def test_category_ok(code, name):
     assert _category(code) == name
 
 
+@pytest.mark.parametrize("code,title,name", [
+    ("EV010100", "얼음나라화천 산천어축제", "계절행사"),
+    ("EV010200", "단풍나무숲길 힐링축제", "계절행사"),
+    ("EV010600", "함평 겨울빛축제", "계절행사"),
+    ("EV010100", "부산불꽃축제", "축제"),
+    ("EV030100", "겨울 사진전", "전시"),  # 축제가 아니면 행사명과 상관없다
+])
+def test_category_season_by_title(code, title, name):
+    assert _category(code, title) == name
+
+
 @pytest.mark.parametrize("code", ["", "EV04", "ev010100", "XX010100", "EV0", "AA"])
 def test_category_unknown(code):
     extra = invalid(_category, code)

@@ -1,7 +1,7 @@
 """tag_terms.match_tags: 오탐(불꽃 -> 꽃, 지나가는 가족 언급)이 없는지 확인한다."""
 import pytest
 
-from app.domains.tour.tag_terms import TAG_TERMS, match_tags
+from app.domains.tour.tag_terms import TAG_TERMS, match_tags, tags_for
 
 
 def test_fireworks_festival_is_not_flower():
@@ -92,3 +92,10 @@ def test_food_listed_once_is_not_food_tag_but_twice_is():
 
 def test_food_festival_by_title():
     assert "먹거리" in match_tags("죽변항 수산물축제", "")
+
+
+def test_tags_for_adds_category_tag():
+    # 소개글 없는 공연도 카테고리로 '공연' 태그를 받고, 사전 태그와 겹치면 한 번만 들어간다.
+    assert tags_for("햄릿", None, "공연") == ["공연"]
+    assert tags_for("음악 공연", None, "공연") == ["공연", "음악"]
+    assert tags_for("겨울 축제", None, "축제") == []
