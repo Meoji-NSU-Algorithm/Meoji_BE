@@ -5,8 +5,6 @@ DB에 이미 있는 행사는 이 명령으로 한 번 다시 계산해야 한�
 
     flask --app wsgi retag-events                     # 바뀔 내용만 보여 준다(저장하지 않음)
     flask --app wsgi retag-events --apply --backup b.json   # 저장하고, 이전 태그를 b.json에 남긴다
-
-KOPIS 공연은 수집할 때 태그를 붙이지 않으므로 대상이 아니다.
 """
 
 import json
@@ -18,12 +16,11 @@ from sqlalchemy import select
 from app.core.errors import BusinessException, ErrorCode
 from app.core.extensions import db
 from app.domains.events.models import Event, Tag
-from app.domains.kopis.sync_service import ID_PREFIX
-from app.domains.tour.tag_terms import match_tags
+from app.domains.tour.tag_terms import tags_for
 
 
 def retag_events(session, apply=False):
-    """KOPIS 외 행사의 태그를 사전 규칙으로 다시 계산해 바뀐 행사 목록을 돌려준다.
+    """저장된 모든 행사(TourAPI·KOPIS)의 태그를 사전 규칙으로 다시 계산해 바뀐 행사 목록을 돌려준다.
 
     apply=False면 저장하지 않는다. 각 항목은 {id, title, old, new}(태그 이름 목록)이다.
 
@@ -33,10 +30,10 @@ def retag_events(session, apply=False):
     tags = {tag.name: tag for tag in session.scalars(select(Tag))}
     changes = []
 
-    events = session.scalars(select(Event).where(~Event.tour_content_id.startswith(ID_PREFIX)))
+    events = session.scalars(select(Event))
     for event in events:
         old = sorted(tag.name for tag in event.tags)
-        new = sorted(match_tags(event.title, event.description))
+        new = sorted(tags_for(event.title, event.description, event.category.name))
         if old == new:
             continue
 

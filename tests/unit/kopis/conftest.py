@@ -4,8 +4,9 @@ from pathlib import Path
 import pytest
 
 from app.core.extensions import db
-from app.domains.events.models import Category, Sido
+from app.domains.events.models import Category, Sido, Tag
 from app.domains.tour.models import TourSyncState
+from tests.unit.tour.conftest import TAGS
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CATEGORIES = ["축제", "전시", "공연", "체험", "계절행사"]
@@ -18,6 +19,8 @@ def seeded(app_ctx):
         db.session.add(Category(name=name, sort_order=i))
     for i, (code, name) in enumerate(SIDOS, 1):
         db.session.add(Sido(code=code, name=name, short_name=name[:2], sort_order=i))
+    for name in TAGS:
+        db.session.add(Tag(name=name))
     db.session.add(TourSyncState(id=1, last_success_at=None))
     db.session.commit()
     db.session.remove()

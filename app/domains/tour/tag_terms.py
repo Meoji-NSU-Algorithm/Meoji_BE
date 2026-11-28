@@ -94,3 +94,15 @@ def match_tags(title, description):
         if _in_title(tag, clean_title) or _mentions(tag, clean_description) >= rule["min_hits"]:
             matched.append(tag)
     return matched
+
+
+# 카테고리가 곧 태그인 경우. 소개글이 없는 KOPIS 공연도 이 규칙으로 최소 '공연' 태그를 갖는다.
+CATEGORY_TAGS = ("공연", "전시", "체험")
+
+
+def tags_for(title, description, category_name):
+    """사전 규칙으로 고른 태그에 카테고리와 같은 이름의 태그를 더해 TAG_TERMS 순서로 돌려준다."""
+    matched = match_tags(title, description)
+    if category_name in CATEGORY_TAGS and category_name not in matched:
+        matched.append(category_name)
+    return [tag for tag in TAG_TERMS if tag in matched]

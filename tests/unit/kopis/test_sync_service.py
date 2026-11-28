@@ -102,6 +102,8 @@ def test_saves_new_performance_with_detail_and_facility(seeded):
     assert e.address.startswith("대구광역시") and e.contact_phone == "053-421-2223"
     assert (e.latitude, e.longitude) == (Decimal("35.8557096"), Decimal("128.5832025"))
     assert e.lcls_code is None and e.description is None
+    # 상세를 받으면 투어 행사와 같은 사전으로 태그를 붙인다(행사명의 '공연').
+    assert [t.name for t in e.tags] == ["공연"]
 
 
 def test_skips_unmapped_area_and_genre(seeded):
