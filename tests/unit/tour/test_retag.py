@@ -49,7 +49,8 @@ def test_unchanged_event_is_not_listed(seeded):
     assert retag_events(db.session, apply=True) == []
 
 
-def test_kopis_events_are_left_alone(seeded):
+def test_kopis_events_are_retagged_too(seeded):
     event_id = make_event("KOPIS-PF1", "음악 콘서트", "음악 음악", old_tags=[])
-    assert retag_events(db.session, apply=True) == []
-    assert tag_names(event_id) == []
+    retag_events(db.session, apply=True)
+    db.session.commit()
+    assert tag_names(event_id) == ["음악"]

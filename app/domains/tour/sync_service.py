@@ -19,7 +19,7 @@ from app.core.extensions import db
 from app.core.time import KST
 from app.domains.events.models import Category, Event, Sido, Tag
 from app.domains.tour.client import TourAPI
-from app.domains.tour.tag_terms import match_tags
+from app.domains.tour.tag_terms import tags_for
 
 # TourAPI 필드 -> Event 컬럼. 응답에 필드가 없으면 기존 값을 유지하고 빈 문자열이면 NULL로 갱신한다.
 TEXT_FIELDS = {
@@ -142,13 +142,30 @@ def _coordinate(value, field, bound):
     return number
 
 
-def _category(code):
-    """lclsSystm3 코드를 카테고리 이름으로 바꾼다. 모르는 코드는 TOUR_SYNC_INVALID_DATA."""
+# TourAPI는 꽃 축제(EV010500)만 계절 코드로 주고 단풍·눈·얼음 축제는 일반 축제 코드로 준다.
+# 그래서 축제 중 행사명에 계절을 드러내는 단어가 있으면 계절행사로 분류한다.
+SEASON_TITLE_TERMS = (
+    "벚꽃", "봄꽃", "유채", "진달래", "철쭉", "튤립", "수국", "국화", "코스모스",
+    "단풍", "눈꽃", "눈축제", "얼음", "빙어", "산천어", "송어", "겨울", "해수욕", "여름",
+)
+
+
+def assign_tags(session, row):
+    """행사명·소개글·카테고리로 태그를 다시 골라 교체한다. 사전의 태그가 tags 테이블에 없으면 TOUR_SYNC_SEED_MISSING."""
+    wanted = tags_for(row.title, row.description, session.get(Category, row.category_id).name)
+    tags = list(session.scalars(select(Tag).where(Tag.name.in_(wanted)))) if wanted else []
+    if len(tags) != len(wanted):
+        raise BusinessException(ErrorCode.TOUR_SYNC_SEED_MISSING, extra={"tags": wanted})
+    row.tags = tags
+
+
+def _category(code, title=""):
+    """lclsSystm3 코드(와 행사명)를 카테고리 이름으로 바꾼다. 모르는 코드는 TOUR_SYNC_INVALID_DATA."""
     # EV010500은 EV01의 하위 코드이므로 계절행사를 일반 축제보다 먼저 판별해야 한다.
     if code == "EV010500":
         return "계절행사"
     if code.startswith("EV01"):
-        return "축제"
+        return "계절행사" if any(term in (title or "") for term in SEASON_TITLE_TERMS) else "축제"
     if code.startswith("EV02"):
         return "공연"
     if code == "EV030100":
@@ -328,7 +345,7 @@ class TourSyncService:
                         ErrorCode.TOUR_SYNC_INVALID_DATA,
                         extra={"field": "lDongRegnCd", "reason": "invalid_sido", "value": sido_code},
                     )
-                category_name = _category(code)
+                category_name = _category(code, _value(merged, "title") or _value(list_item, "title") or row.title)
                 merged["lclsSystm3"] = code
                 # 기준 데이터는 마이그레이션이 시드한다. 없으면 임의로 만들지 않고 실패시킨다.
                 category = session.scalar(select(Category).where(Category.name == category_name))
@@ -374,14 +391,7 @@ class TourSyncService:
                     row.price, row.is_free = _fee(row.fee_text)
                 # 소개글이 응답에 있을 때만 태그를 다시 계산해 교체한다.
                 if "overview" in merged:
-                    wanted = match_tags(row.title, row.description)
-                    tags = list(session.scalars(select(Tag).where(Tag.name.in_(wanted)))) if wanted else []
-                    if len(tags) != len(wanted):
-                        raise BusinessException(
-                            ErrorCode.TOUR_SYNC_SEED_MISSING,
-                            extra={"tags": wanted},
-                        )
-                    row.tags = tags
+                    assign_tags(session, row)
                 # 커밋 전에 SQL을 실행해 DB 오류를 아래 except에서 변환한다.
                 session.flush()
                 return row.id
